@@ -1,0 +1,23 @@
+version: "3.9"
+services:
+  postgresClinic:
+    image: postgres:16
+    container_name: postgres_main
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: clinic_master
+    ports:
+      - "5438:5432"
+    volumes:
+      - postgres_data_clinic:/var/lib/postgresql/data
+    networks:
+      - clinic_net
+
+volumes:
+  postgres_data_clinic:
+
+networks:
+  clinic_net:
+    driver: bridge

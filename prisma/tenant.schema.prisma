@@ -1,0 +1,417 @@
+// prisma/tenant.schema.prisma
+generator clientTenant {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/tenant-client"
+}
+
+datasource dbTenant {
+  provider = "postgresql"
+  //url      = env("DATABASE_URL_VELASCO")
+  url      = env("DATABASE_URL_CLINICB")
+}
+
+enum UserRole {
+  ADMIN
+  DOCTOR
+  RECEPTIONIST
+  ACCOUNTANT
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum FeeType {
+  INITIAL
+  FOLLOW_UP
+  PROCEDURE
+  TREATMENT
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PAID
+  CANCELLED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CashMovementType {
+  INCOME
+  EXPENSE
+}
+
+enum CashRegisterStatus {
+  OPEN
+  CLOSED
+}
+
+
+model User {
+  id            String       @id @default(uuid())
+  firstName     String
+  lastName      String
+  ciNumber      String?      @unique
+  email         String       @unique
+  phone         String?
+  passwordHash  String
+  role          UserRole
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+  createdHistories MedicalHistory[] @relation("created_histories")
+  createdAppointments Appointment[] @relation("created_appointments")
+  specialties     DoctorSpecialty[]
+  historyEntries  HistoryEntry[]     @relation("entry_doctor")
+  appointments    Appointment[]      @relation("doctor_appointments")
+  invoices        Invoice[]          @relation("invoice_creator")
+  payments        Payment[]          @relation("payment_user")
+  uploadedFiles   File[]             @relation("uploaded_files")
+  patientImages   PatientImage[]     @relation("uploaded_by")
+  refreshTokens   RefreshToken[]
+  prescriptions   Prescription[]     @relation("doctor_prescriptions")
+  cashRegisters   CashRegister[]     @relation("cash_register_user")
+  cashMovements   CashMovement[]     @relation("cash_movement_user")
+  schedules   Schedule[]
+}
+
+model Schedule {
+  id          String   @id @default(uuid())
+  doctorId    String
+  specialtyId String
+  dayOfWeek   Int
+  startTime   String
+  endTime     String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  doctor    User      @relation(fields: [doctorId], references: [id])
+  specialty Specialty @relation(fields: [specialtyId], references: [id])
+  appointments Appointment[]
+
+  @@unique([doctorId, specialtyId, dayOfWeek, startTime, endTime])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+  @@index([userId])
+}
+
+model Specialty {
+  id          String            @id @default(uuid())
+  name        String
+  code        String?           @unique
+  description String?
+  doctors     DoctorSpecialty[]
+  histories   MedicalHistory[]
+  appointments Appointment[]
+  fees        Fee[]
+  schedules   Schedule[]
+}
+
+model DoctorSpecialty {
+  id          String    @id @default(uuid())
+  doctorId    String
+  specialtyId String
+  createdAt   DateTime  @default(now())
+
+  doctor      User      @relation(fields: [doctorId], references: [id])
+  specialty   Specialty @relation(fields: [specialtyId], references: [id])
+
+  @@unique([doctorId, specialtyId])
+}
+
+model Patient {
+  id                String              @id @default(uuid())
+  firstName         String
+  lastName          String
+  ciNumber          String?             @unique
+  birthDate         DateTime?
+  gender            String?
+  address           String?
+  phone             String?
+  email             String?
+  insuranceInfo     Json?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  deletedAt         DateTime?
+
+  medicalHistories  MedicalHistory[]
+  appointments      Appointment[]
+  invoices          Invoice[]
+  patientImages     PatientImage[]
+  chatbotInteractions ChatbotInteraction[]
+  prescriptions     Prescription[]      @relation("patient_prescriptions")
+}
+
+model MedicalHistory {
+  id          String        @id @default(uuid())
+  patientId   String
+  specialtyId String
+  createdById String
+  createdAt   DateTime      @default(now())
+  note        String?
+
+  patient     Patient       @relation(fields: [patientId], references: [id])
+  specialty   Specialty     @relation(fields: [specialtyId], references: [id])
+  createdBy   User         @relation("created_histories", fields: [createdById], references: [id])
+  entries     HistoryEntry[]
+  prescriptions Prescription[] @relation("history_prescriptions")
+  @@unique([patientId, specialtyId])
+}
+
+model HistoryEntry {
+  id               String        @id @default(uuid())
+  historyId        String
+  doctorId         String
+  visitDate        DateTime      @default(now())
+  chiefComplaint   String?
+  subjectiveNote   String?
+  objectiveNote    String?
+  assessment       String?
+  plan             String?
+  vitals           Json?
+  pathologicalHistory     String?
+  surgicalHistory         String?
+  habitualMedication      String?
+  menarcheAge             String?
+  lastMenstrualPeriod     DateTime?
+  obstetricHistory        String?
+  diet                    String?
+  physicalActivity        String?
+  smokes                  Boolean     @default(false)
+  alcohol                 Boolean     @default(false)
+  drugs                   Boolean     @default(false)
+  drugsDetails            String?
+  labResults              String?
+  imagingResults          String?
+  otherStudies            String?
+  nonPharmacologicalTreatment String?
+  requestedStudies        String?
+  referrals               String?
+  followUp                String?
+  
+  createdAt        DateTime      @default(now())
+
+  history        MedicalHistory @relation(fields: [historyId], references: [id])
+  doctor         User           @relation("entry_doctor", fields: [doctorId], references: [id])
+  diagnoses      EntryDiagnosis[]
+  prescriptions  Prescription[] @relation("entry_prescriptions")
+}
+
+model Prescription {
+  id              String       @id @default(uuid())
+  historyEntryId  String
+  historyId       String
+  patientId       String
+  doctorId        String
+  prescriptionDate DateTime    @default(now())
+  instructions    String
+  notes           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  historyEntry    HistoryEntry @relation("entry_prescriptions", fields: [historyEntryId], references: [id])
+  history         MedicalHistory @relation("history_prescriptions", fields: [historyId], references: [id])
+  patient         Patient      @relation("patient_prescriptions", fields: [patientId], references: [id])
+  doctor          User         @relation("doctor_prescriptions", fields: [doctorId], references: [id])
+  medications     PrescriptionMedication[]
+}
+
+model PrescriptionMedication {
+  id              String       @id @default(uuid())
+  prescriptionId  String
+  medicationName  String
+  dosage          String
+  frequency       String
+  duration        String
+  notes           String?
+
+  prescription    Prescription @relation(fields: [prescriptionId], references: [id])
+}
+
+model Diagnosis {
+  id          String          @id @default(uuid())
+  code        String?
+  name        String
+  description String?
+  entries     EntryDiagnosis[]
+}
+
+model EntryDiagnosis {
+  id             String       @id @default(uuid())
+  historyEntryId String
+  diagnosisId    String
+  isPrimary      Boolean      @default(false)
+
+  historyEntry   HistoryEntry @relation(fields: [historyEntryId], references: [id])
+  diagnosis      Diagnosis    @relation(fields: [diagnosisId], references: [id])
+}
+
+model Appointment {
+  id             String         @id @default(uuid())
+  patientId      String
+  doctorId       String
+  specialtyId    String
+  scheduleId     String?
+  scheduledStart DateTime
+  scheduledEnd   DateTime?
+  status         AppointmentStatus @default(PENDING)
+  source         String? 
+  createdById    String?
+  notes          String?
+  reservationAmount Decimal?
+  totalAmount     Decimal?
+  remainingAmount Decimal?
+  patient        Patient        @relation(fields: [patientId], references: [id])
+  doctor         User           @relation("doctor_appointments", fields: [doctorId], references: [id])
+  specialty      Specialty      @relation(fields: [specialtyId], references: [id])
+  schedule     Schedule? @relation(fields: [scheduleId], references: [id])
+  createdBy   User? @relation("created_appointments", fields: [createdById], references: [id])
+
+}
+
+model Fee {
+  id            String    @id @default(uuid())
+  specialtyId   String
+  feeType       FeeType
+  amount        Decimal  
+  currency      String    @default("BOB")
+  description   String?
+
+  specialty     Specialty @relation(fields: [specialtyId], references: [id])
+}
+
+model Invoice {
+  id            String       @id @default(uuid())
+  invoiceNumber String       @unique
+  patientId     String
+  createdById   String
+  totalAmount   Decimal      
+  status        InvoiceStatus @default(DRAFT)
+  createdAt     DateTime     @default(now())
+  cashMovementId String?
+
+  patient       Patient      @relation(fields: [patientId], references: [id])
+  cashMovement  CashMovement? @relation(fields: [cashMovementId], references: [id])
+  createdBy     User         @relation("invoice_creator", fields: [createdById], references: [id])
+  items         InvoiceItem[]
+  payments      Payment[]
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  description String
+  quantity    Int      @default(1)
+  unitPrice   Decimal
+  totalPrice  Decimal
+
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  paymentMethod String
+  amount      Decimal
+  paidById    String
+  paidAt      DateTime @default(now())
+
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  paidBy      User     @relation("payment_user", fields: [paidById], references: [id])
+}
+
+model File {
+  id          String   @id @default(uuid())
+  storagePath String
+  fileName    String
+  mimeType    String
+  size        BigInt
+  uploadedById String
+  uploadedAt  DateTime @default(now())
+
+  uploadedBy  User     @relation("uploaded_files", fields: [uploadedById], references: [id])
+  patientImages PatientImage[]
+}
+
+model PatientImage {
+  id          String   @id @default(uuid())
+  patientId   String
+  fileId      String
+  label       String?
+  uploadedById String
+  uploadedAt  DateTime @default(now())
+
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  file        File     @relation(fields: [fileId], references: [id])
+  uploadedBy  User     @relation("uploaded_by", fields: [uploadedById], references: [id])
+}
+
+model ChatbotInteraction {
+  id           String   @id @default(uuid())
+  patientId    String?
+  patientPhone String
+  message      String
+  direction    MessageDirection
+  intent       String?
+  resolved     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  patient      Patient? @relation(fields: [patientId], references: [id])
+}
+
+model CashRegister {
+  id            String            @id @default(uuid())
+  userId        String
+  openingAmount Decimal
+  closingAmount Decimal?
+  actualAmount  Decimal?
+  difference    Decimal?
+  openedAt      DateTime         @default(now())
+  closedAt      DateTime?
+  status        CashRegisterStatus @default(OPEN)
+  notes         String?
+
+  user          User             @relation("cash_register_user", fields: [userId], references: [id])
+  movements     CashMovement[]
+}
+
+model CashMovement {
+  id              String           @id @default(uuid())
+  cashRegisterId  String
+  userId          String
+  type            CashMovementType
+  amount          Decimal
+  description     String
+  createdAt       DateTime        @default(now())
+  
+  cashRegister    CashRegister    @relation(fields: [cashRegisterId], references: [id])
+  user            User            @relation("cash_movement_user", fields: [userId], references: [id])
+  invoices        Invoice[]
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  actorId   String?
+  action    String
+  entity    String?
+  entityId  String?
+  details   Json?
+  createdAt DateTime @default(now())
+}
