@@ -44,3 +44,11 @@ export const deleteCashRegister = asyncHandler(async (req: Request, res: Respons
   const result = await service.delete(id);
   res.json({ ok: true, data: result });
 });
+
+export const closeCashRegister = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id || typeof id !== 'string') throw new AppError('ID requerido', 400);
+  const service = getService(req);
+  const result = await service.close(id, req.body);
+  res.json({ ok: true, data: result });
+});

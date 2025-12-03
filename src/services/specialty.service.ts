@@ -1,4 +1,4 @@
-import type { PrismaClient as TenantPrisma, FeeType } from '../../node_modules/.prisma/tenant-client';
+import type { PrismaClient as TenantPrisma, FeeType, Fee, Schedule } from '../../node_modules/.prisma/tenant-client';
 import { AppError } from '../utils/app.error';
 
 export class SpecialtyService {
@@ -86,6 +86,68 @@ export class SpecialtyService {
 
   async update(id: string, data: any): Promise<import('../../node_modules/.prisma/tenant-client').Specialty> {
     return await this.prisma.specialty.update({ where: { id }, data });
+  }
+
+  async addFees(
+    specialtyId: string,
+    fees: Array<{
+      feeType: FeeType;
+      amount: number | string;
+      currency?: string;
+      description?: string;
+    }>
+  ): Promise<Fee[]> {
+    const specialty = await this.prisma.specialty.findUnique({ where: { id: specialtyId } });
+    if (!specialty) throw new AppError('Especialidad no encontrada', 404);
+
+    return await this.prisma.$transaction(async (tx) => {
+      const created = await Promise.all(
+        fees.map(fee =>
+          tx.fee.create({
+            data: {
+              specialtyId: specialtyId,
+              feeType: fee.feeType,
+              amount: typeof fee.amount === 'string' ? parseFloat(fee.amount) : fee.amount,
+              currency: fee.currency || 'BOB',
+              description: fee.description,
+            },
+          })
+        )
+      );
+      return created;
+    });
+  }
+
+  async addSchedules(
+    specialtyId: string,
+    schedules: Array<{
+      doctorId: string;
+      dayOfWeek: number;
+      startTime: string;
+      endTime: string;
+      isActive?: boolean;
+    }>
+  ): Promise<Schedule[]> {
+    const specialty = await this.prisma.specialty.findUnique({ where: { id: specialtyId } });
+    if (!specialty) throw new AppError('Especialidad no encontrada', 404);
+
+    return await this.prisma.$transaction(async (tx) => {
+      const created = await Promise.all(
+        schedules.map(sch =>
+          tx.schedule.create({
+            data: {
+              doctorId: sch.doctorId,
+              specialtyId: specialtyId,
+              dayOfWeek: sch.dayOfWeek,
+              startTime: sch.startTime,
+              endTime: sch.endTime,
+              isActive: sch.isActive !== undefined ? sch.isActive : true,
+            },
+          })
+        )
+      );
+      return created;
+    });
   }
 
   async delete(id: string): Promise<import('../../node_modules/.prisma/tenant-client').Specialty> {

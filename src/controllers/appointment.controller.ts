@@ -26,16 +26,29 @@ export const listAppointmentsByDoctor = asyncHandler(async (req: Request, res: R
   const service = getService(req);
   
   const { doctorId, startDate, endDate, status, specialtyId, patientName } = req.query;
+  const filters: { startDate?: Date; endDate?: Date; status?: AppointmentStatus } = {};
 
-  const filters: any = {};
-  
   if (startDate) filters.startDate = new Date(startDate as string);
   if (endDate) filters.endDate = new Date(endDate as string);
   if (status) filters.status = status as AppointmentStatus;
-  if (specialtyId) filters.specialtyId = specialtyId as string;
-  if (patientName) filters.patientName = patientName as string;
-  
+
   const result = await service.findByDoctor(doctorId as string, filters);
+  res.json({ ok: true, data: result });
+});
+
+export const listAppointmentsByPatient = asyncHandler(async (req: Request, res: Response) => {
+  const service = getService(req);
+
+  const { patientId } = req.params;
+  if (!patientId || typeof patientId !== 'string') throw new AppError('patientId requerido', 400);
+
+  const { startDate, endDate, status } = req.query;
+  const filters: { startDate?: Date; endDate?: Date; status?: AppointmentStatus } = {};
+  if (startDate) filters.startDate = new Date(startDate as string);
+  if (endDate) filters.endDate = new Date(endDate as string);
+  if (status) filters.status = status as AppointmentStatus;
+
+  const result = await service.findByPatient(patientId, filters);
   res.json({ ok: true, data: result });
 });
 

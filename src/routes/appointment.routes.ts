@@ -3,6 +3,7 @@ import {
 	createAppointment,
 	listAppointments,
 	listAppointmentsByDoctor,
+	listAppointmentsByPatient,
 	getAppointment,
 	updateAppointment,
 	deleteAppointment
@@ -13,6 +14,7 @@ const router = Router();
 router.post('/', createAppointment);
 router.get('/', listAppointments);
 router.get('/doctors', listAppointmentsByDoctor);
+router.get('/patient/:patientId', listAppointmentsByPatient);
 router.get('/:id', getAppointment);
 router.put('/:id', updateAppointment);
 router.delete('/:id', deleteAppointment);

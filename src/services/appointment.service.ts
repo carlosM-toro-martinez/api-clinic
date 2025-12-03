@@ -162,6 +162,35 @@ export class AppointmentService {
   });
   }
 
+  async findByPatient(
+    patientId: string,
+    filters?: {
+      startDate?: Date;
+      endDate?: Date;
+      status?: AppointmentStatus;
+    }
+  ): Promise<Appointment[]> {
+    return await this.prisma.appointment.findMany({
+      where: {
+        patientId: patientId,
+        ...(filters?.startDate && {
+          scheduledStart: { gte: filters.startDate }
+        }),
+        ...(filters?.endDate && {
+          scheduledStart: { lte: filters.endDate }
+        }),
+        ...(filters?.status && { status: filters.status })
+      },
+      include: {
+        patient: true,
+        doctor: true,
+        specialty: true,
+        schedule: true,
+      },
+      orderBy: { scheduledStart: 'asc' }
+    });
+  }
+
   async detail(id: string): Promise<Appointment> {
     const appointment = await this.prisma.appointment.findUnique({ where: { id }, include: { patient: true, doctor: true, specialty: true } });
     if (!appointment) throw new AppError('Cita no encontrada', 404);

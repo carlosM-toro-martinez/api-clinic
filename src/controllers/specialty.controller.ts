@@ -44,3 +44,27 @@ export const deleteSpecialty = asyncHandler(async (req: Request, res: Response) 
   const result = await service.delete(id);
   res.json({ ok: true, data: result });
 });
+
+export const addSpecialtyFees = asyncHandler(async (req: Request, res: Response) => {
+  const { specialtyId } = req.params;
+  if (!specialtyId || typeof specialtyId !== 'string') throw new AppError('specialtyId requerido', 400);
+  const service = getService(req);
+
+  const fees = req.body;
+  if (!Array.isArray(fees) || fees.length === 0) throw new AppError('Se requiere un arreglo de fees', 400);
+
+  const result = await service.addFees(specialtyId, fees);
+  res.status(201).json({ ok: true, data: result });
+});
+
+export const addSpecialtySchedules = asyncHandler(async (req: Request, res: Response) => {
+  const { specialtyId } = req.params;
+  if (!specialtyId || typeof specialtyId !== 'string') throw new AppError('specialtyId requerido', 400);
+  const service = getService(req);
+
+  const schedules = req.body;
+  if (!Array.isArray(schedules) || schedules.length === 0) throw new AppError('Se requiere un arreglo de schedules', 400);
+
+  const result = await service.addSchedules(specialtyId, schedules);
+  res.status(201).json({ ok: true, data: result });
+});
