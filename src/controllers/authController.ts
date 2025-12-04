@@ -4,6 +4,8 @@ import { asyncHandler } from '../utils/async.handler';
 import { loginSchema, registerSchema } from '../validators/auth.validator';
 import { AppError } from '../utils/app.error';
 import type { PrismaClient as TenantPrisma, UserRole } from '../../node_modules/.prisma/tenant-client';
+import { revokeToken } from '../lib/tokenManager';
+import { getTokenExpiry, isTokenValid, decodeToken } from '../utils/token';
 
 declare global {
   namespace Express {
@@ -95,4 +97,41 @@ export const changePasswordController = asyncHandler(async (req: Request, res: R
   await service.changePassword(user.sub, currentPassword, newPassword);
 
   res.json({ ok: true, message: 'Password changed' });
+});
+
+export const logoutController = asyncHandler(async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) throw new AppError('Authorization header missing', 401);
+  const [scheme, token] = authHeader.split(' ');
+  if (scheme !== 'Bearer' || !token) throw new AppError('Invalid Authorization header format', 401);
+
+  // determine expiry from token and revoke
+  const exp = getTokenExpiry(token);
+  // exp is unix seconds; pass it along to the revoke store
+  revokeToken(token, exp ?? undefined);
+
+  res.json({ ok: true, message: 'Logged out' });
+});
+
+export const validateTokenController = asyncHandler(async (req: Request, res: Response) => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new AppError('JWT_SECRET not configured', 500, 'CONFIG_ERROR');
+
+  // Accept token in Authorization header (Bearer) or in body { token }
+  let token: string | undefined;
+  const authHeader = req.headers.authorization;
+  if (authHeader) {
+    const [scheme, t] = authHeader.split(' ');
+    if (scheme === 'Bearer' && t) token = t;
+  }
+
+  if (!token && req.body && typeof req.body.token === 'string') token = req.body.token;
+
+  if (!token) throw new AppError('Token is required in Authorization header or body.token', 400, 'TOKEN_REQUIRED');
+
+  const valid = isTokenValid(token, secret);
+  const payload = decodeToken(token);
+  const exp = getTokenExpiry(token);
+
+  res.json({ ok: true, valid, payload, exp });
 });

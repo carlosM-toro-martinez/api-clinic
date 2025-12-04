@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { UserRole } from '../../node_modules/.prisma/tenant-client';
 
 import jwt from 'jsonwebtoken';
+import { isTokenRevoked } from '../lib/tokenManager';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -29,6 +30,9 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 
   try {
+    // reject revoked tokens
+    if (isTokenRevoked(token)) return res.status(401).json({ ok: false, error: 'Token revoked' });
+
     const payload = jwt.verify(token, secret) as JwtPayloadCustom;
     const role =
       payload.role && Object.values(UserRole).includes(payload.role as UserRole)
