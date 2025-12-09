@@ -250,6 +250,8 @@ export class HistoryEntryService {
 
   async create(completeData: CreateMedicalHistoryData): Promise<CreateMedicalHistoryResult> {
     return await this.prisma.$transaction(async (tx) => {
+      console.log(completeData);
+      
       let medicalHistory = await tx.medicalHistory.findUnique({
         where: {
           patientId_specialtyId: {
@@ -263,30 +265,30 @@ export class HistoryEntryService {
         const appointmentExists = await tx.appointment.findUnique({
           where: { id: completeData.appointmentId }
         });
-      if (!appointmentExists) {
-        throw new Error(`Appointment with ID ${completeData.appointmentId} does not exist`);
-      }
-
-      // Verificar que la cita pertenece al mismo paciente y doctor
-      if (appointmentExists.patientId !== completeData.medicalHistoryData.patientId) {
-        throw new Error(`Appointment does not belong to the specified patient`);
-      }
-
-      if (appointmentExists.doctorId !== completeData.historyEntryData.doctorId) {
-        throw new Error(`Appointment does not belong to the specified doctor`);
-      }
-
-      // Actualizar el estado de la cita a COMPLETED
-      await tx.appointment.update({
-        where: { id: completeData.appointmentId },
-        data: { 
-          status: 'COMPLETED',
-          // Opcional: agregar notas o información adicional sobre la consulta completada
-          notes: completeData.appointmentNotes 
-            ? `${appointmentExists.notes || ''}\n\n--- CONSULTA COMPLETADA ---\n${completeData.appointmentNotes}`
-            : appointmentExists.notes
+        if (!appointmentExists) {
+          throw new Error(`Appointment with ID ${completeData.appointmentId} does not exist`);
         }
-      });
+
+        // Verificar que la cita pertenece al mismo paciente y doctor
+        if (appointmentExists.patientId !== completeData.medicalHistoryData.patientId) {
+          throw new Error(`Appointment does not belong to the specified patient`);
+        }
+
+        if (appointmentExists.doctorId !== completeData.historyEntryData.doctorId) {
+          throw new Error(`Appointment does not belong to the specified doctor`);
+        }
+
+        // Actualizar el estado de la cita a COMPLETED
+        await tx.appointment.update({
+          where: { id: completeData.appointmentId },
+          data: { 
+            status: 'COMPLETED',
+            // Opcional: agregar notas o información adicional sobre la consulta completada
+            notes: completeData.appointmentNotes 
+              ? `${appointmentExists.notes || ''}\n\n--- CONSULTA COMPLETADA ---\n${completeData.appointmentNotes}`
+              : appointmentExists.notes
+          }
+        });
       }
 
       if (!medicalHistory) {
@@ -349,13 +351,49 @@ export class HistoryEntryService {
         }
       });
 
-      // Crear diagnósticos
+      // ===============================
+      // MODIFICACIÓN EN LA CREACIÓN DE DIAGNÓSTICOS
+      // ===============================
       if (completeData.diagnoses && completeData.diagnoses.length > 0) {
         for (const diagnosis of completeData.diagnoses) {
+          let diagnosisIdToUse: string;
+
+          // Verificar si el diagnosisId es un UUID válido
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          const isValidUUID = uuidRegex.test(diagnosis.diagnosisId);
+          
+          if (isValidUUID) {
+            // Si es un UUID válido, buscar si el diagnóstico existe
+            const existingDiagnosis = await tx.diagnosis.findUnique({
+              where: { id: diagnosis.diagnosisId }
+            });
+
+            if (existingDiagnosis) {
+              // Si existe, usar el ID existente
+              diagnosisIdToUse = diagnosis.diagnosisId;
+            } else {
+              // Si el UUID no existe en la base de datos, lanzar error
+              throw new Error(`Diagnóstico con ID ${diagnosis.diagnosisId} no encontrado`);
+            }
+          } else {
+            // Si NO es un UUID válido, crear un nuevo diagnóstico
+            // Usar el valor de diagnosisId como 'name' y como 'code'
+            const newDiagnosis = await tx.diagnosis.create({
+              data: {
+                code: diagnosis.diagnosisId, // Usar el valor como código
+                name: diagnosis.diagnosisId, // Usar el valor como nombre
+                description: diagnosis.diagnosisId // Usar el valor como descripción
+              }
+            });
+            
+            diagnosisIdToUse = newDiagnosis.id;
+          }
+
+          // Crear la relación EntryDiagnosis con el ID (existente o nuevo)
           await tx.entryDiagnosis.create({
             data: {
               historyEntryId: historyEntry.id,
-              diagnosisId: diagnosis.diagnosisId,
+              diagnosisId: diagnosisIdToUse,
               isPrimary: diagnosis.isPrimary || false
             }
           });

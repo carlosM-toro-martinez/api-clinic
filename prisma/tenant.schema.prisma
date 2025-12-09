@@ -6,8 +6,8 @@ generator clientTenant {
 
 datasource dbTenant {
   provider = "postgresql"
-  //url      = env("DATABASE_URL_VELASCO")
-  url      = env("DATABASE_URL_CLINICB")
+  url      = env("DATABASE_URL_VELASCO")
+  //url      = env("DATABASE_URL_CLINICB")
 }
 
 enum UserRole {
@@ -27,7 +27,10 @@ enum AppointmentStatus {
 enum FeeType {
   INITIAL
   FOLLOW_UP
+  EMERGENCY
   PROCEDURE
+  RECONSULTATION
+  SURGERIES
   TREATMENT
 }
 
