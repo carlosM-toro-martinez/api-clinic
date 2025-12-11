@@ -10,7 +10,6 @@ import historyEntryRoutes from './historyEntry.routes';
 import paymentRoutes from './payment.routes';
 import diagnosisRoutes from './diagnosis.routes';
 import appointmentRoutes from './appointment.routes';
-import whatsappRoutes from './whatsapp.routes';
 
 const router = Router();
 
@@ -25,6 +24,5 @@ router.use('/history-entries', historyEntryRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/diagnosis', diagnosisRoutes);
 router.use('/appointments', appointmentRoutes);
-router.use('/whatsapp', whatsappRoutes);
 
 export default router;

@@ -7,6 +7,7 @@ dotenv.config();
 
 import { tenantResolver } from './middleware/tenantResolver';
 import router from './routes/index';
+import routerWpp from './routes/wpp';
 import { errorHandler } from './middleware/error.handler';
 import { disconnectAllClients } from './lib/prismaManager';
 
@@ -17,6 +18,9 @@ app.use(cors());
 app.use(helmet());
 app.use(express.json());
 app.use(morgan('dev'));
+
+app.use('/api/v1', routerWpp);
+
 
 app.use(tenantResolver);
 
