@@ -129,7 +129,9 @@ export class WhatsAppController {
 
       // ✅ PRUEBA TEMPORAL: Enviar respuesta automática "Eco"
       // Agrega esto para probar que el envío funciona
-      const testResponse = `✅ ¡Hola! Recibí tu mensaje: "${text}".\n\nEste es un eco automático de prueba.`;
+      //const testResponse = `✅ ¡Hola! Recibí tu mensaje: "${text}".\n\nEste es un eco automático de prueba.`;
+      const testResponse = `Te amo mucho, jamas lo olvides, gracias por ser mi inspiración.\n\nPara: Fabiola Belén Aguirre Fernández ❤️`;
+      
       try {
         await WhatsAppController.sender.sendTextMessage(from, testResponse);
         console.log(`🔄 [PRUEBA] Respuesta de eco enviada a ${from}`);
