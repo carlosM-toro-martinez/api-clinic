@@ -127,9 +127,23 @@ export class WhatsAppController {
       console.log(`🆔 ID: ${messageId}`);
       console.log(`🕐 Hora real: ${timestamp.toLocaleString('es-ES')}`);
 
+      // ✅ PRUEBA TEMPORAL: Enviar respuesta automática "Eco"
+      // Agrega esto para probar que el envío funciona
+      const testResponse = `✅ ¡Hola! Recibí tu mensaje: "${text}".\n\nEste es un eco automático de prueba.`;
+      try {
+        await WhatsAppController.sender.sendTextMessage(from, testResponse);
+        console.log(`🔄 [PRUEBA] Respuesta de eco enviada a ${from}`);
+      } catch (sendError) {
+        console.error(`❌ [PRUEBA] Falló el envío del eco:`, sendError);
+      }
+      // ✅ FIN DE LA PRUEBA TEMPORAL
+
       // Solo procesar mensajes de texto por ahora
       if (message.type === 'text') {
-        await WhatsAppController.handleUserMessage(from, text);
+        // Comenta temporalmente la lógica de conversación mientras pruebas el envío
+        // await WhatsAppController.handleUserMessage(from, text);
+        
+        console.log(`ℹ️ Lógica de conversación temporalmente desactivada para pruebas de envío`);
       } else {
         console.log(`ℹ️ Mensaje de tipo '${message.type}' ignorado por ahora`);
       }
