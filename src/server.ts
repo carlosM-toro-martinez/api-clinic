@@ -10,6 +10,7 @@ import router from './routes/index';
 import routerWpp from './routes/wpp';
 import { errorHandler } from './middleware/error.handler';
 import { disconnectAllClients } from './lib/prismaManager';
+import { tenantResolverForChatbot } from './middleware/tenantResolverForChatbot';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3000);
@@ -18,6 +19,7 @@ app.use(cors());
 app.use(helmet());
 app.use(express.json());
 app.use(morgan('dev'));
+app.use(tenantResolverForChatbot);
 
 app.use('/api/v1', routerWpp);
 
