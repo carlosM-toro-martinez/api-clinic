@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import type { PrismaClient as TenantPrisma } from '@prisma/client';
+import type { PrismaClient as TenantPrisma } from '../../node_modules/.prisma/tenant-client';
 import { asyncHandler } from '../utils/async.handler';
 import { WhatsAppSenderService } from '../services/whatsapp.service';
 import { AppointmentService } from '../services/appointment.service';
