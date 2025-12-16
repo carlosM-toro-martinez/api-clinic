@@ -196,7 +196,6 @@ export class WhatsAppController {
     session.step = 'fecha';
     await this.sender.sendTextMessage(phone, mensaje);
   }
-
   /* -------------------------------------------------------------------------- */
   /*                          PASO 3: FECHA                                    */
   /* -------------------------------------------------------------------------- */
@@ -206,14 +205,30 @@ export class WhatsAppController {
     message: string,
     session: UserSession
   ): Promise<void> {
-    const specialties: Array<{ id: string; name: string }> = (session as any).specialties;
-    
-    // Verificar si es selección de especialidad
-    const index = parseInt(message) - 1;
-
-    if (index >= 0 && index < specialties.length) {
+    // Primero, verificar si ya tenemos una especialidad seleccionada
+    if (!session.selectedSpecialtyId || !session.selectedSpecialtyName) {
+      // Si no hay especialidad seleccionada, el mensaje debería ser la selección de especialidad
+      const specialties: Array<{ id: string; name: string }> | undefined = (session as any).specialties;
+      
+      if (!specialties || !Array.isArray(specialties)) {
+        await this.sender.sendTextMessage(phone, '❌ Error: No se encontraron especialidades. Por favor, comienza de nuevo.');
+        session.step = 'inicio';
+        return;
+      }
+      
+      const index = parseInt(message) - 1;
+      
+      if (isNaN(index) || index < 0 || index >= specialties.length) {
+        let mensaje = '❌ Número inválido. Especialidades disponibles:\n\n';
+        specialties.forEach((spec, i) => {
+          mensaje += `*${i + 1}* - ${spec.name}\n`;
+        });
+        mensaje += '\n*Escribe el número de la especialidad que deseas.*';
+        await this.sender.sendTextMessage(phone, mensaje);
+        return;
+      }
+      
       const selected = specialties[index];
-
       if (!selected) {
         await this.sender.sendTextMessage(phone, '❌ Selección inválida.');
         return;
@@ -221,21 +236,23 @@ export class WhatsAppController {
 
       session.selectedSpecialtyId = selected.id;
       session.selectedSpecialtyName = selected.name;
+      
+      // Limpiar datos temporales
       delete (session as any).specialties;
-
+      
       await this.sender.sendTextMessage(
         phone,
         `✅ Especialidad: *${selected.name}*\n\n` +
-        `Ahora ingresa la fecha para tu cita en formato *DD/MM/AAAA*`
+        `Ahora ingresa la fecha para tu cita en formato *DD/MM/AAAA*\n\n` +
+        `Ejemplo: *15/12/2024*`
       );
       return;
     }
-
-
-    // Si no es número válido, es la fecha
+    
+    // Si ya tenemos especialidad seleccionada, entonces el mensaje debe ser la fecha
     const dateRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
     const match = message.match(dateRegex);
-
+    
     if (!match) {
       await this.sender.sendTextMessage(
         phone,
@@ -245,33 +262,33 @@ export class WhatsAppController {
       );
       return;
     }
-
+    
     const [, day, month, year] = match;
     const date = new Date(`${year}-${month}-${day}`);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
+    
     // Validaciones
     if (isNaN(date.getTime())) {
       await this.sender.sendTextMessage(phone, '❌ Fecha inválida. Intenta nuevamente.');
       return;
     }
-
+    
     if (date < today) {
       await this.sender.sendTextMessage(phone, '❌ No puedes agendar citas en fechas pasadas.');
       return;
     }
-
+    
     // Verificar que no sea domingo (0 es domingo, 6 es sábado)
     if (date.getDay() === 0) {
       await this.sender.sendTextMessage(phone, '❌ No atendemos los domingos. Por favor elige otro día.');
       return;
     }
-
+    
     session.appointmentDate = `${day}/${month}/${year}`;
     session.appointmentDateObj = date;
     session.step = 'horarios';
-
+    
     await this.sender.sendTextMessage(
       phone,
       `✅ Fecha: *${session.appointmentDate}*\n\n` +
