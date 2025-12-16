@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import type { PrismaClient as TenantPrisma } from '../../node_modules/.prisma/tenant-client';
+import type { PrismaClient as TenantPrisma, Prisma } from '../../node_modules/.prisma/tenant-client';
 import { asyncHandler } from '../utils/async.handler';
 import { WhatsAppSenderService } from '../services/whatsapp.service';
 import { AppointmentService } from '../services/appointment.service';
@@ -26,61 +26,28 @@ interface WhatsAppWebhook {
 
 interface UserSession {
   phone: string;
-  step:
-    | 'inicio'
-    | 'seleccion_servicio'
-    | 'seleccion_especialidad'
-    | 'proporcionar_fecha'
-    | 'seleccion_horario'
-    | 'verificacion_paciente'
-    | 'registro_paciente'
-    | 'confirmacion';
-
+  step: 'inicio' | 'especialidades' | 'fecha' | 'horarios' | 'verificacion' | 'registro' | 'confirmacion' | 'final';
   selectedSpecialtyId?: string;
   selectedSpecialtyName?: string;
   appointmentDate?: string;
-
+  appointmentDateObj?: Date;
   selectedScheduleId?: string;
   selectedDoctorId?: string;
+  selectedDoctorName?: string;
   selectedTime?: string;
-  scheduledStart?: string;
-  scheduledEnd?: string;
-
+  scheduledStart?: Date;
+  scheduledEnd?: Date;
   patientId?: string;
   patientCI?: string;
-
+  patientFirstName?: string;
+  patientLastName?: string;
   reservationAmount?: number;
   totalAmount?: number;
   remainingAmount?: number;
-
   lastInteraction: Date;
 }
 
-interface SpecialtyItem {
-  id: string;
-  name: string;
-}
-
-interface TimeSlot {
-  scheduleId: string;
-  doctorId: string;
-  doctorName: string;
-  startTime: string;
-  endTime: string;
-}
-
-type CreateAppointmentPayload =
-  Parameters<AppointmentService['create']>[0];
-
-/* -------------------------------------------------------------------------- */
-
 const userSessions = new Map<string, UserSession>();
-
-const getPrismaClient = (req: Request): TenantPrisma => {
-  const prisma = (req as any).prisma;
-  if (!prisma) throw new Error('Prisma client not available');
-  return prisma as TenantPrisma;
-};
 
 /* -------------------------------------------------------------------------- */
 /*                               CONTROLLER                                   */
@@ -108,7 +75,7 @@ export class WhatsAppController {
     const phone = message.from;
     const text = message.text?.body ?? '';
 
-    await this.handleUserMessage(req, phone, text.toLowerCase().trim());
+    await this.handleUserMessage(req, phone, text.trim());
   }
 
   private static async handleUserMessage(
@@ -125,342 +92,550 @@ export class WhatsAppController {
         lastInteraction: new Date(),
       };
       userSessions.set(phone, session);
-    } else {
-      session.lastInteraction = new Date();
     }
 
-    const prisma = getPrismaClient(req);
+    session.lastInteraction = new Date();
 
-    switch (session.step) {
-      case 'inicio':
-        await this.sender.sendTextMessage(
-          phone,
-          '👋 Bienvenido\n\n*1* Agendar cita'
-        );
-        session.step = 'seleccion_servicio';
-        break;
+    const prisma = (req as any).prisma;
+    if (!prisma) throw new Error('Prisma client not available');
 
-      case 'seleccion_servicio':
-        session.step = 'seleccion_especialidad';
-        await this.sender.sendTextMessage(phone, 'Cargando especialidades...');
-        break;
+    // Limpiar sesión si recibe "cancelar" en cualquier momento
+    if (message.toLowerCase() === 'cancelar') {
+      userSessions.delete(phone);
+      await this.sender.sendTextMessage(phone, '✅ Proceso cancelado. ¡Hasta luego!');
+      return;
+    }
 
-      case 'seleccion_especialidad':
-        await this.handleSpecialtySelection(prisma, phone, message, session);
-        break;
-
-      case 'proporcionar_fecha':
-        await this.handleDateSelection(prisma, phone, message, session);
-        break;
-
-      case 'seleccion_horario':
-        await this.handleTimeSlotSelection(prisma, phone, message, session);
-        break;
-
-      case 'verificacion_paciente':
-        await this.handlePatientVerification(prisma, phone, message, session);
-        break;
-
-      case 'registro_paciente':
-        await this.handlePatientRegistration(prisma, phone, message, session);
-        break;
-
-      case 'confirmacion':
-        await this.handleConfirmation(prisma, phone, message, session);
-        break;
+    try {
+      switch (session.step) {
+        case 'inicio':
+          await this.handleInicio(phone, session);
+          break;
+        case 'especialidades':
+          await this.handleEspecialidades(prisma, phone, message, session);
+          break;
+        case 'fecha':
+          await this.handleFecha(phone, message, session);
+          break;
+        case 'horarios':
+          await this.handleHorarios(prisma, phone, message, session);
+          break;
+        case 'verificacion':
+          await this.handleVerificacion(prisma, phone, message, session);
+          break;
+        case 'registro':
+          await this.handleRegistro(prisma, phone, message, session);
+          break;
+        case 'confirmacion':
+          await this.handleConfirmacion(prisma, phone, message, session);
+          break;
+        case 'final':
+          userSessions.delete(phone);
+          break;
+      }
+    } catch (error) {
+      console.error(`Error en paso ${session.step}:`, error);
+      await this.sender.sendTextMessage(phone, '❌ Ocurrió un error. Por favor, intenta nuevamente.');
+      userSessions.delete(phone);
     }
   }
 
   /* -------------------------------------------------------------------------- */
-  /*                           SELECCIÓN ESPECIALIDAD                           */
+  /*                                 PASO 1: INICIO                             */
   /* -------------------------------------------------------------------------- */
 
-  private static async handleSpecialtySelection(
+  private static async handleInicio(
+    phone: string,
+    session: UserSession
+  ): Promise<void> {
+    const mensaje = `¡Hola! 👋 Soy tu asistente de agendamiento.\n\n` +
+      `Para comenzar, selecciona una opción:\n\n` +
+      `*1* - Agendar nueva cita\n\n` +
+      `*Escribe el número de tu elección.*`;
+
+    await this.sender.sendTextMessage(phone, mensaje);
+    session.step = 'especialidades';
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /*                         PASO 2: ESPECIALIDADES                            */
+  /* -------------------------------------------------------------------------- */
+
+  private static async handleEspecialidades(
     prisma: TenantPrisma,
     phone: string,
     message: string,
     session: UserSession
   ): Promise<void> {
-    const specialties: SpecialtyItem[] =
-      await prisma.specialty.findMany({
-        select: { id: true, name: true },
+    // Solo procesar si el mensaje es "1" (agendar cita)
+    if (message !== '1') {
+      await this.sender.sendTextMessage(phone, '❌ Opción no válida. Por favor escribe *1* para agendar una cita.');
+      return;
+    }
+
+    // Obtener especialidades activas
+    const specialties = await prisma.specialty.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' }
+    });
+
+    if (specialties.length === 0) {
+      await this.sender.sendTextMessage(phone, '❌ No hay especialidades disponibles en este momento.');
+      userSessions.delete(phone);
+      return;
+    }
+
+    let mensaje = '🏥 *Selecciona una especialidad:*\n\n';
+    specialties.forEach((spec, index) => {
+      mensaje += `*${index + 1}* - ${spec.name}\n`;
+    });
+    mensaje += '\n*Escribe el número de la especialidad que deseas.*';
+
+    // Guardar especialidades en la sesión temporalmente
+    (session as any).specialties = specialties;
+    session.step = 'fecha';
+    await this.sender.sendTextMessage(phone, mensaje);
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /*                          PASO 3: FECHA                                    */
+  /* -------------------------------------------------------------------------- */
+
+  private static async handleFecha(
+    phone: string,
+    message: string,
+    session: UserSession
+  ): Promise<void> {
+    const specialties: Array<{ id: string; name: string }> = (session as any).specialties;
+    
+    // Verificar si es selección de especialidad
+    const index = parseInt(message) - 1;
+
+    if (index >= 0 && index < specialties.length) {
+      const selected = specialties[index];
+
+      if (!selected) {
+        await this.sender.sendTextMessage(phone, '❌ Selección inválida.');
+        return;
+      }
+
+      session.selectedSpecialtyId = selected.id;
+      session.selectedSpecialtyName = selected.name;
+      delete (session as any).specialties;
+
+      await this.sender.sendTextMessage(
+        phone,
+        `✅ Especialidad: *${selected.name}*\n\n` +
+        `Ahora ingresa la fecha para tu cita en formato *DD/MM/AAAA*`
+      );
+      return;
+    }
+
+
+    // Si no es número válido, es la fecha
+    const dateRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+    const match = message.match(dateRegex);
+
+    if (!match) {
+      await this.sender.sendTextMessage(
+        phone,
+        '❌ Formato de fecha incorrecto.\n\n' +
+        'Por favor ingresa la fecha en formato *DD/MM/AAAA*\n' +
+        'Ejemplo: *15/12/2024*'
+      );
+      return;
+    }
+
+    const [, day, month, year] = match;
+    const date = new Date(`${year}-${month}-${day}`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Validaciones
+    if (isNaN(date.getTime())) {
+      await this.sender.sendTextMessage(phone, '❌ Fecha inválida. Intenta nuevamente.');
+      return;
+    }
+
+    if (date < today) {
+      await this.sender.sendTextMessage(phone, '❌ No puedes agendar citas en fechas pasadas.');
+      return;
+    }
+
+    // Verificar que no sea domingo (0 es domingo, 6 es sábado)
+    if (date.getDay() === 0) {
+      await this.sender.sendTextMessage(phone, '❌ No atendemos los domingos. Por favor elige otro día.');
+      return;
+    }
+
+    session.appointmentDate = `${day}/${month}/${year}`;
+    session.appointmentDateObj = date;
+    session.step = 'horarios';
+
+    await this.sender.sendTextMessage(
+      phone,
+      `✅ Fecha: *${session.appointmentDate}*\n\n` +
+      `Buscando horarios disponibles...`
+    );
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /*                         PASO 4: HORARIOS                                  */
+  /* -------------------------------------------------------------------------- */
+
+  private static async handleHorarios(
+    prisma: TenantPrisma,
+    phone: string,
+    message: string,
+    session: UserSession
+  ): Promise<void> {
+    // Si es la primera vez en este paso, cargar horarios
+    if (!session.selectedScheduleId) {
+      if (!session.selectedSpecialtyId || !session.appointmentDateObj) {
+        await this.sender.sendTextMessage(phone, '❌ Error interno. Faltan datos.');
+        session.step = 'inicio';
+        return;
+      }
+
+      const date = session.appointmentDateObj;
+      const dayOfWeek = date.getDay() === 0 ? 7 : date.getDay(); // Domingo = 7
+
+      // Obtener schedules activos
+      const schedules = await prisma.schedule.findMany({
+        where: {
+          specialtyId: session.selectedSpecialtyId,
+          dayOfWeek,
+          isActive: true,
+        },
+        include: {
+          doctor: {
+            select: { firstName: true, lastName: true }
+          }
+        },
+        orderBy: { startTime: 'asc' }
       });
 
-    const index = Number(message) - 1;
-    const selected = specialties[index];
+      // Obtener citas ya agendadas para esa fecha y especialidad
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
 
-    if (!selected) {
-      const msg =
-        'Especialidades:\n' +
-        specialties.map((s, i) => `*${i + 1}* ${s.name}`).join('\n');
-      await this.sender.sendTextMessage(phone, msg);
+      const appointments = await prisma.appointment.findMany({
+        where: {
+          specialtyId: session.selectedSpecialtyId,
+          scheduledStart: {
+            gte: startOfDay,
+            lte: endOfDay,
+          },
+          status: {
+            in: ['PENDING', 'CONFIRMED']
+          }
+        },
+        select: { scheduleId: true }
+      });
+
+      const ocupados = new Set(appointments.map(a => a.scheduleId));
+
+      // Filtrar horarios disponibles
+      const disponibles = schedules.filter(s => !ocupados.has(s.id));
+
+      if (disponibles.length === 0) {
+        await this.sender.sendTextMessage(
+          phone,
+          `❌ No hay horarios disponibles para *${session.selectedSpecialtyName}* el *${session.appointmentDate}*.\n\n` +
+          `Por favor, elige otra fecha escribiendo *reiniciar* o escribe *cancelar* para salir.`
+        );
+        return;
+      }
+
+      // Guardar horarios en sesión
+      (session as any).horarios = disponibles.map(s => ({
+        id: s.id,
+        doctorId: s.doctorId,
+        doctorName: `${s.doctor.firstName} ${s.doctor.lastName}`,
+        start: s.startTime,
+        end: s.endTime,
+      }));
+
+      let mensaje = `⏰ *Horarios disponibles para ${session.appointmentDate}:*\n\n`;
+      (session as any).horarios.forEach((h: any, i: number) => {
+        mensaje += `*${i + 1}* - ${h.start} a ${h.end} (Dr. ${h.doctorName})\n`;
+      });
+      mensaje += '\n*Escribe el número del horario que prefieres.*';
+
+      await this.sender.sendTextMessage(phone, mensaje);
       return;
     }
 
-    session.selectedSpecialtyId = selected.id;
-    session.selectedSpecialtyName = selected.name;
-    session.step = 'proporcionar_fecha';
+    // Si ya hay horarios cargados, procesar selección
+    const horarios: Array<any> = (session as any).horarios || [];
+    const index = parseInt(message) - 1;
 
-    await this.sender.sendTextMessage(
-      phone,
-      `✅ ${selected.name}\n\nIngresa fecha DD/MM/AAAA`
-    );
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /*                                 FECHA                                      */
-  /* -------------------------------------------------------------------------- */
-
-  private static async handleDateSelection(
-    prisma: TenantPrisma,
-    phone: string,
-    message: string,
-    session: UserSession
-  ): Promise<void> {
-    const [day, month, year] = message.split('/');
-    if (!day || !month || !year || !session.selectedSpecialtyId) return;
-
-    session.appointmentDate = message;
-
-    const date = new Date(`${year}-${month}-${day}`);
-
-    const slots = await this.getAvailableTimeSlots(
-      prisma,
-      session.selectedSpecialtyId,
-      date
-    );
-
-    if (!slots.length) {
-      await this.sender.sendTextMessage(phone, '❌ No hay horarios disponibles');
+    if (isNaN(index) || index < 0 || index >= horarios.length) {
+      let mensaje = '❌ Número inválido. Horarios disponibles:\n\n';
+      horarios.forEach((h, i) => {
+        mensaje += `*${i + 1}* - ${h.start} a ${h.end} (Dr. ${h.doctorName})\n`;
+      });
+      await this.sender.sendTextMessage(phone, mensaje);
       return;
     }
 
-    const msg =
-      'Horarios disponibles:\n' +
-      slots
-        .map(
-          (s, i) =>
-            `*${i + 1}* ${s.startTime} - ${s.endTime} Dr. ${s.doctorName}`
-        )
-        .join('\n');
+    const seleccionado = horarios[index];
+    session.selectedScheduleId = seleccionado.id;
+    session.selectedDoctorId = seleccionado.doctorId;
+    session.selectedDoctorName = seleccionado.doctorName;
+    session.selectedTime = `${seleccionado.start} - ${seleccionado.end}`;
 
-    session.step = 'seleccion_horario';
-    await this.sender.sendTextMessage(phone, msg);
-  }
+    // Calcular fechas completas
+    const fecha = session.appointmentDateObj!;
+    const [horaInicio, minutoInicio] = seleccionado.start.split(':').map(Number);
+    const [horaFin, minutoFin] = seleccionado.end.split(':').map(Number);
 
-  /* -------------------------------------------------------------------------- */
-  /*                               HORARIOS                                     */
-  /* -------------------------------------------------------------------------- */
+    const inicio = new Date(fecha);
+    inicio.setHours(horaInicio, minutoInicio, 0, 0);
+    
+    const fin = new Date(fecha);
+    fin.setHours(horaFin, minutoFin, 0, 0);
 
-  private static async getAvailableTimeSlots(
-    prisma: TenantPrisma,
-    specialtyId: string,
-    date: Date
-  ): Promise<TimeSlot[]> {
-    const schedules = await prisma.schedule.findMany({
-      where: { specialtyId, isActive: true },
-      include: { doctor: true },
-    });
+    session.scheduledStart = inicio;
+    session.scheduledEnd = fin;
 
-    return schedules.map((s: typeof schedules[number]) => ({
-      scheduleId: s.id,
-      doctorId: s.doctorId,
-      doctorName: `${s.doctor.firstName} ${s.doctor.lastName}`,
-      startTime: s.startTime,
-      endTime: s.endTime,
-    }));
-  }
-
-  /* -------------------------------------------------------------------------- */
-  /*                          SELECCIÓN HORARIO                                 */
-  /* -------------------------------------------------------------------------- */
-
-  private static async handleTimeSlotSelection(
-    prisma: TenantPrisma,
-    phone: string,
-    message: string,
-    session: UserSession
-  ): Promise<void> {
-    if (!session.selectedSpecialtyId || !session.appointmentDate) return;
-
-    const date = new Date(
-      session.appointmentDate.split('/').reverse().join('-')
-    );
-
-    const slots = await this.getAvailableTimeSlots(
-      prisma,
-      session.selectedSpecialtyId,
-      date
-    );
-
-    const slot = slots[Number(message) - 1];
-    if (!slot) return;
-
-    session.selectedScheduleId = slot.scheduleId;
-    session.selectedDoctorId = slot.doctorId;
-    session.selectedTime = `${slot.startTime}-${slot.endTime}`;
-
-    session.scheduledStart = `${date.toISOString().split('T')[0]}T${slot.startTime}`;
-    session.scheduledEnd = `${date.toISOString().split('T')[0]}T${slot.endTime}`;
-
-    session.step = 'verificacion_paciente';
+    // Limpiar datos temporales
+    (session as any).horarios = undefined;
+    session.step = 'verificacion';
 
     await this.sender.sendTextMessage(
       phone,
-      'Ingrese su número de CI para verificar paciente'
+      `✅ Horario seleccionado: *${session.selectedTime}*\n\n` +
+      `Ahora necesitamos verificar tus datos.\n\n` +
+      `Por favor, ingresa tu *número de carnet (CI)*:\n\n` +
+      `Ejemplo: *1234567LP*`
     );
   }
 
   /* -------------------------------------------------------------------------- */
-  /*                        VERIFICACIÓN PACIENTE                               */
+  /*                     PASO 5: VERIFICACIÓN PACIENTE                         */
   /* -------------------------------------------------------------------------- */
 
-  private static async handlePatientVerification(
+  private static async handleVerificacion(
     prisma: TenantPrisma,
     phone: string,
     message: string,
     session: UserSession
   ): Promise<void> {
-    const ci = message.trim();
+    const ci = message.trim().toUpperCase();
 
-    const patient = await prisma.patient.findFirst({
-      where: { ciNumber: ci },
+    // Buscar paciente por CI
+    const paciente = await prisma.patient.findFirst({
+      where: { ciNumber: ci }
     });
 
-    if (patient) {
-      session.patientId = patient.id;
+    if (paciente) {
+      // Paciente encontrado
+      session.patientId = paciente.id;
+      session.patientCI = paciente.ciNumber || undefined;
+      session.patientFirstName = paciente.firstName;
+      session.patientLastName = paciente.lastName;
       session.step = 'confirmacion';
 
-      await this.sender.sendTextMessage(
-        phone,
-        `👤 Paciente encontrado:\n${patient.firstName} ${patient.lastName}\n\n¿Confirmar cita? (SI / NO)`
-      );
+      await this.mostrarResumen(phone, session);
       return;
     }
 
+    // Paciente no encontrado
     session.patientCI = ci;
-    session.step = 'registro_paciente';
+    session.step = 'registro';
 
     await this.sender.sendTextMessage(
       phone,
-      'Paciente no encontrado.\nIngrese: Nombres Apellidos'
+      '📝 *Registro de nuevo paciente*\n\n' +
+      'No encontramos tu CI en nuestro sistema.\n\n' +
+      'Por favor, ingresa tu *nombre completo* (nombre y apellido):\n\n' +
+      'Ejemplo: *Juan Pérez García*'
     );
   }
 
   /* -------------------------------------------------------------------------- */
-  /*                         REGISTRO PACIENTE                                  */
+  /*                      PASO 6: REGISTRO PACIENTE                            */
   /* -------------------------------------------------------------------------- */
 
-  private static async handlePatientRegistration(
+  private static async handleRegistro(
     prisma: TenantPrisma,
     phone: string,
     message: string,
     session: UserSession
   ): Promise<void> {
-    if (!session.patientCI) return;
+    const nombreCompleto = message.trim();
+    const partes = nombreCompleto.split(' ');
 
-    const [firstName, ...rest] = message.split(' ');
-    const lastName = rest.join(' ');
-
-    if (!firstName || !lastName) {
+    if (partes.length < 2) {
       await this.sender.sendTextMessage(
         phone,
-        '❌ Formato inválido. Ej: Juan Pérez'
+        '❌ Formato incorrecto.\n\n' +
+        'Por favor ingresa tu nombre completo con al menos un nombre y un apellido.\n\n' +
+        'Ejemplo: *Juan Pérez García*'
       );
       return;
     }
 
-    const patient = await prisma.patient.create({
-      data: {
-        firstName,
-        lastName,
-        ciNumber: session.patientCI,
-      },
-    });
+    const nombre = partes[0];
+    const apellido = partes.slice(1).join(' ');
 
-    session.patientId = patient.id;
-    session.step = 'confirmacion';
+    try {
+      if (!nombre || !apellido || !session?.patientCI) {
+        throw new Error('Datos del paciente incompletos');
+      }
 
-    await this.sender.sendTextMessage(
-      phone,
-      '✅ Paciente registrado\n\n¿Confirmar cita? (SI / NO)'
-    );
+      const paciente = await prisma.patient.create({
+        data: {
+          firstName: nombre,
+          lastName: apellido,
+          ciNumber: session.patientCI,
+          phone: phone.replace('+', ''),
+        }
+      });
+
+      session.patientId = paciente.id;
+      session.patientFirstName = paciente.firstName;
+      session.patientLastName = paciente.lastName;
+      session.step = 'confirmacion';
+
+      await this.mostrarResumen(phone, session);
+    } catch (error) {
+      console.error('Error al crear paciente:', error);
+      await this.sender.sendTextMessage(
+        phone,
+        '❌ Error al registrar. Intenta nuevamente o contacta recepción.'
+      );
+      session.step = 'inicio';
+    }
   }
 
   /* -------------------------------------------------------------------------- */
-  /*                              CONFIRMACIÓN                                  */
+  /*                    PASO 7: CONFIRMACIÓN FINAL                             */
   /* -------------------------------------------------------------------------- */
 
-  private static async handleConfirmation(
+  private static async mostrarResumen(
+    phone: string,
+    session: UserSession
+  ): Promise<void> {
+    // Obtener tarifa (por ahora valor fijo, deberías consultar de la tabla Fee)
+    session.reservationAmount = 150;
+    session.totalAmount = 150;
+    session.remainingAmount = 0;
+
+    const resumen = 
+      `📋 *RESUMEN DE LA CITA*\n\n` +
+      `• *Especialidad:* ${session.selectedSpecialtyName}\n` +
+      `• *Fecha:* ${session.appointmentDate}\n` +
+      `• *Horario:* ${session.selectedTime}\n` +
+      `• *Doctor:* ${session.selectedDoctorName}\n` +
+      `• *Paciente:* ${session.patientFirstName} ${session.patientLastName}\n` +
+      `• *CI:* ${session.patientCI}\n` +
+      `• *Monto a pagar:* ${session.reservationAmount} BOB\n\n` +
+      `¿Confirmas la reserva de esta cita?\n\n` +
+      `Responde *SI* para confirmar o *NO* para cancelar.`;
+
+    await this.sender.sendTextMessage(phone, resumen);
+  }
+
+  private static async handleConfirmacion(
     prisma: TenantPrisma,
     phone: string,
     message: string,
     session: UserSession
   ): Promise<void> {
-    if (message !== 'si') {
-      await this.sender.sendTextMessage(phone, '❌ Cita cancelada');
+    const respuesta = message.toLowerCase();
+
+    if (respuesta !== 'si') {
+      await this.sender.sendTextMessage(phone, '❌ Cita cancelada. ¡Hasta luego!');
       userSessions.delete(phone);
       return;
     }
 
-    if (
-      !session.patientId ||
-      !session.selectedDoctorId ||
-      !session.selectedSpecialtyId ||
-      !session.selectedScheduleId ||
-      !session.scheduledStart ||
-      !session.scheduledEnd
-    ) {
+    // Validar que todos los datos estén completos
+    if (!this.validarDatosCompletos(session)) {
+      await this.sender.sendTextMessage(phone, '❌ Error interno. Faltan datos.');
+      userSessions.delete(phone);
+      return;
+    }
+
+    try {
+      const appointmentService = new AppointmentService(prisma);
+
+      const payload: Prisma.AppointmentCreateInput & {
+        type?: 'INCOME' | 'EXPENSE';
+        amount?: number;
+        description?: string;
+      } = {
+        patient: { connect: { id: session.patientId! } },
+        doctor: { connect: { id: session.selectedDoctorId! } },
+        specialty: { connect: { id: session.selectedSpecialtyId! } },
+        schedule: { connect: { id: session.selectedScheduleId! } },
+
+        scheduledStart: session.scheduledStart!,
+        scheduledEnd: session.scheduledEnd!,
+        reservationAmount: session.reservationAmount!,
+        totalAmount: session.totalAmount!,
+        remainingAmount: session.remainingAmount!,
+        notes: `Cita agendada vía WhatsApp. Paciente: ${session.patientFirstName} ${session.patientLastName}`,
+        status: 'PENDING',
+        source: 'whatsapp_bot',
+
+        // Campos extra para tu lógica
+        type: 'INCOME',
+        amount: session.reservationAmount!,
+        description: `Consulta ${session.selectedSpecialtyName}`,
+      };
+
+      const cita = await appointmentService.create(payload);
+
+
+      const mensajeFinal = 
+        `🎉 *¡CITA AGENDADA CON ÉXITO!*\n\n` +
+        `Tu cita ha sido registrada con el código:\n` +
+        `*${cita.id.slice(0, 8).toUpperCase()}*\n\n` +
+        `Te contactaremos 24 horas antes de tu cita.\n\n` +
+        `¡Gracias por confiar en nosotros! 👨‍⚕️👩‍⚕️`;
+
+      await this.sender.sendTextMessage(phone, mensajeFinal);
+      session.step = 'final';
+      
+      // Limpiar sesión después de 1 minuto
+      setTimeout(() => {
+        userSessions.delete(phone);
+      }, 60000);
+
+    } catch (error) {
+      console.error('Error al crear cita:', error);
       await this.sender.sendTextMessage(
         phone,
-        '❌ Error interno al crear la cita'
+        '❌ Error al crear la cita. Por favor contacta a recepción.'
       );
       userSessions.delete(phone);
-      return;
     }
-
-    const appointmentService = new AppointmentService(prisma);
-
-    const payload: CreateAppointmentPayload = {
-      patient: {
-        connect: { id: session.patientId },
-      },
-      doctor: {
-        connect: { id: session.selectedDoctorId },
-      },
-      specialty: {
-        connect: { id: session.selectedSpecialtyId },
-      },
-      schedule: {
-        connect: { id: session.selectedScheduleId },
-      },
-
-      scheduledStart: new Date(session.scheduledStart),
-      scheduledEnd: new Date(session.scheduledEnd),
-
-      source: 'whatsapp',
-      status: 'PENDING',
-
-      amount: session.reservationAmount,
-      description: `Consulta ${session.selectedSpecialtyName ?? ''}`,
-    };
-
-
-    await appointmentService.create(payload);
-
-    await this.sender.sendTextMessage(
-      phone,
-      '✅ Cita creada correctamente\n\nGracias por contactarnos 🙌'
-    );
-
-    userSessions.delete(phone);
   }
 
   /* -------------------------------------------------------------------------- */
-  /*                               UTILIDAD                                     */
+  /*                               UTILIDADES                                   */
   /* -------------------------------------------------------------------------- */
+
+  private static validarDatosCompletos(session: UserSession): boolean {
+    return !!(
+      session.patientId &&
+      session.selectedDoctorId &&
+      session.selectedSpecialtyId &&
+      session.selectedScheduleId &&
+      session.scheduledStart &&
+      session.scheduledEnd &&
+      session.reservationAmount !== undefined
+    );
+  }
 
   private static isSessionExpired(session: UserSession): boolean {
-    return Date.now() - session.lastInteraction.getTime() > 10 * 60 * 1000;
+    const ahora = new Date();
+    const minutos = (ahora.getTime() - session.lastInteraction.getTime()) / (1000 * 60);
+    return minutos > 10; // 10 minutos de inactividad
   }
 }
