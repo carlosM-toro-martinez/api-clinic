@@ -115,7 +115,7 @@ export class WhatsAppController {
           await this.handleEspecialidades(prisma, phone, message, session);
           break;
         case 'fecha':
-          await this.handleFecha(phone, message, session);
+          await this.handleFecha(prisma, phone, message, session);
           break;
         case 'horarios':
           await this.handleHorarios(prisma, phone, message, session);
@@ -201,6 +201,7 @@ export class WhatsAppController {
   /* -------------------------------------------------------------------------- */
 
   private static async handleFecha(
+    prisma: TenantPrisma,  // Añadimos prisma como parámetro
     phone: string,
     message: string,
     session: UserSession
@@ -289,15 +290,99 @@ export class WhatsAppController {
     session.appointmentDateObj = date;
     session.step = 'horarios';
     
-    await this.sender.sendTextMessage(
-      phone,
-      `✅ Fecha: *${session.appointmentDate}*\n\n` +
-      `Buscando horarios disponibles...`
-    );
+    // Llamar directamente a handleHorarios para cargar y mostrar horarios
+    await this.cargarYMostrarHorarios(prisma, phone, session);
   }
 
   /* -------------------------------------------------------------------------- */
-  /*                         PASO 4: HORARIOS                                  */
+  /*                         PASO 4: HORARIOS (Carga inicial)                   */
+  /* -------------------------------------------------------------------------- */
+
+  private static async cargarYMostrarHorarios(
+    prisma: TenantPrisma,
+    phone: string,
+    session: UserSession
+  ): Promise<void> {
+    if (!session.selectedSpecialtyId || !session.appointmentDateObj) {
+      await this.sender.sendTextMessage(phone, '❌ Error interno. Faltan datos.');
+      session.step = 'inicio';
+      return;
+    }
+
+    const date = session.appointmentDateObj;
+    const dayOfWeek = date.getDay() === 0 ? 7 : date.getDay(); // Domingo = 7
+
+    // Obtener schedules activos
+    const schedules = await prisma.schedule.findMany({
+      where: {
+        specialtyId: session.selectedSpecialtyId,
+        dayOfWeek,
+        isActive: true,
+      },
+      include: {
+        doctor: {
+          select: { firstName: true, lastName: true }
+        }
+      },
+      orderBy: { startTime: 'asc' }
+    });
+
+    // Obtener citas ya agendadas para esa fecha y especialidad
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        specialtyId: session.selectedSpecialtyId,
+        scheduledStart: {
+          gte: startOfDay,
+          lte: endOfDay,
+        },
+        status: {
+          in: ['PENDING', 'CONFIRMED']
+        }
+      },
+      select: { scheduleId: true }
+    });
+
+    const ocupados = new Set(appointments.map(a => a.scheduleId));
+
+    // Filtrar horarios disponibles
+    const disponibles = schedules.filter(s => !ocupados.has(s.id));
+
+    if (disponibles.length === 0) {
+      await this.sender.sendTextMessage(
+        phone,
+        `❌ No hay horarios disponibles para *${session.selectedSpecialtyName}* el *${session.appointmentDate}*.\n\n` +
+        `Por favor, escribe una nueva fecha en formato *DD/MM/AAAA* o escribe *cancelar* para salir.`
+      );
+      // Cambiar al paso de fecha para permitir nueva fecha
+      session.step = 'fecha';
+      return;
+    }
+
+    // Guardar horarios en sesión
+    (session as any).horarios = disponibles.map(s => ({
+      id: s.id,
+      doctorId: s.doctorId,
+      doctorName: `${s.doctor.firstName} ${s.doctor.lastName}`,
+      start: s.startTime,
+      end: s.endTime,
+    }));
+
+    let mensaje = `⏰ *Horarios disponibles para ${session.appointmentDate}:*\n\n`;
+    (session as any).horarios.forEach((h: any, i: number) => {
+      mensaje += `*${i + 1}* - ${h.start} a ${h.end} (Dr. ${h.doctorName})\n`;
+    });
+    mensaje += '\n*Escribe el número del horario que prefieres.*';
+
+    await this.sender.sendTextMessage(phone, mensaje);
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /*                         PASO 4: HORARIOS (Selección)                       */
   /* -------------------------------------------------------------------------- */
 
   private static async handleHorarios(
@@ -306,90 +391,6 @@ export class WhatsAppController {
     message: string,
     session: UserSession
   ): Promise<void> {
-    // Si es la primera vez en este paso, cargar horarios
-    if (!session.selectedScheduleId && !(session as any).horarios) {
-      if (!session.selectedSpecialtyId || !session.appointmentDateObj) {
-        await this.sender.sendTextMessage(phone, '❌ Error interno. Faltan datos.');
-        session.step = 'inicio';
-        return;
-      }
-
-      const date = session.appointmentDateObj;
-      const dayOfWeek = date.getDay() === 0 ? 7 : date.getDay(); // Domingo = 7
-
-      // Obtener schedules activos
-      const schedules = await prisma.schedule.findMany({
-        where: {
-          specialtyId: session.selectedSpecialtyId,
-          dayOfWeek,
-          isActive: true,
-        },
-        include: {
-          doctor: {
-            select: { firstName: true, lastName: true }
-          }
-        },
-        orderBy: { startTime: 'asc' }
-      });
-
-      // Obtener citas ya agendadas para esa fecha y especialidad
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
-
-      const appointments = await prisma.appointment.findMany({
-        where: {
-          specialtyId: session.selectedSpecialtyId,
-          scheduledStart: {
-            gte: startOfDay,
-            lte: endOfDay,
-          },
-          status: {
-            in: ['PENDING', 'CONFIRMED']
-          }
-        },
-        select: { scheduleId: true }
-      });
-
-      const ocupados = new Set(appointments.map(a => a.scheduleId));
-
-      // Filtrar horarios disponibles
-      const disponibles = schedules.filter(s => !ocupados.has(s.id));
-
-      if (disponibles.length === 0) {
-        await this.sender.sendTextMessage(
-          phone,
-          `❌ No hay horarios disponibles para *${session.selectedSpecialtyName}* el *${session.appointmentDate}*.\n\n` +
-          `Por favor, escribe una nueva fecha en formato *DD/MM/AAAA* o escribe *cancelar* para salir.`
-        );
-        // Cambiar al paso de fecha para permitir nueva fecha
-        session.step = 'fecha';
-        return;
-      }
-
-      // Guardar horarios en sesión
-      (session as any).horarios = disponibles.map(s => ({
-        id: s.id,
-        doctorId: s.doctorId,
-        doctorName: `${s.doctor.firstName} ${s.doctor.lastName}`,
-        start: s.startTime,
-        end: s.endTime,
-      }));
-
-      let mensaje = `⏰ *Horarios disponibles para ${session.appointmentDate}:*\n\n`;
-      (session as any).horarios.forEach((h: any, i: number) => {
-        mensaje += `*${i + 1}* - ${h.start} a ${h.end} (Dr. ${h.doctorName})\n`;
-      });
-      mensaje += '\n*Escribe el número del horario que prefieres.*';
-
-      await this.sender.sendTextMessage(phone, mensaje);
-      return;
-    }
-
-    // Si ya hay horarios cargados, procesar selección
-    const horarios: Array<any> = (session as any).horarios || [];
-    
     // Manejar el caso de 'reiniciar' para volver a seleccionar fecha
     if (message.toLowerCase() === 'reiniciar') {
       session.step = 'fecha';
@@ -399,6 +400,14 @@ export class WhatsAppController {
         `Por favor, ingresa una nueva fecha en formato *DD/MM/AAAA*\n\n` +
         `Ejemplo: *15/12/2024*`
       );
+      return;
+    }
+
+    const horarios: Array<any> = (session as any).horarios || [];
+    
+    // Si no hay horarios cargados, cargarlos
+    if (horarios.length === 0) {
+      await this.cargarYMostrarHorarios(prisma, phone, session);
       return;
     }
 
