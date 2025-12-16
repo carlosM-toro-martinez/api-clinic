@@ -307,7 +307,7 @@ export class WhatsAppController {
     session: UserSession
   ): Promise<void> {
     // Si es la primera vez en este paso, cargar horarios
-    if (!session.selectedScheduleId) {
+    if (!session.selectedScheduleId && !(session as any).horarios) {
       if (!session.selectedSpecialtyId || !session.appointmentDateObj) {
         await this.sender.sendTextMessage(phone, '❌ Error interno. Faltan datos.');
         session.step = 'inicio';
@@ -361,8 +361,10 @@ export class WhatsAppController {
         await this.sender.sendTextMessage(
           phone,
           `❌ No hay horarios disponibles para *${session.selectedSpecialtyName}* el *${session.appointmentDate}*.\n\n` +
-          `Por favor, elige otra fecha escribiendo *reiniciar* o escribe *cancelar* para salir.`
+          `Por favor, escribe una nueva fecha en formato *DD/MM/AAAA* o escribe *cancelar* para salir.`
         );
+        // Cambiar al paso de fecha para permitir nueva fecha
+        session.step = 'fecha';
         return;
       }
 
@@ -387,6 +389,19 @@ export class WhatsAppController {
 
     // Si ya hay horarios cargados, procesar selección
     const horarios: Array<any> = (session as any).horarios || [];
+    
+    // Manejar el caso de 'reiniciar' para volver a seleccionar fecha
+    if (message.toLowerCase() === 'reiniciar') {
+      session.step = 'fecha';
+      await this.sender.sendTextMessage(
+        phone,
+        `Reiniciando selección de fecha.\n\n` +
+        `Por favor, ingresa una nueva fecha en formato *DD/MM/AAAA*\n\n` +
+        `Ejemplo: *15/12/2024*`
+      );
+      return;
+    }
+
     const index = parseInt(message) - 1;
 
     if (isNaN(index) || index < 0 || index >= horarios.length) {
@@ -394,6 +409,7 @@ export class WhatsAppController {
       horarios.forEach((h, i) => {
         mensaje += `*${i + 1}* - ${h.start} a ${h.end} (Dr. ${h.doctorName})\n`;
       });
+      mensaje += '\n*Escribe el número del horario que prefieres.*';
       await this.sender.sendTextMessage(phone, mensaje);
       return;
     }

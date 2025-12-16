@@ -16,7 +16,9 @@ const masterPrisma = new PrismaMasterClient({
 
 export async function tenantResolverForChatbot(req: Request, res: Response, next: NextFunction) {
   try {
-    console.log(req.body?.entry);
+    console.log('request');
+    
+    console.log(req.body?.entry?.changes);
     const tenantCode = 'velasco';
     const tenant = await masterPrisma.tenant.findUnique({ where: { code: tenantCode } });
     if (!tenant) {
