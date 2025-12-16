@@ -90,23 +90,17 @@ export class AppointmentService {
       new Date().toLocaleString("en-US", { timeZone: "America/La_Paz" })
     );
 
-    // Hoy a las 00:00
+    // Hoy a las 00:00 (Bolivia)
     const startOfToday = new Date(nowLaPaz);
     startOfToday.setHours(0, 0, 0, 0);
 
-    // Una semana adelante
-    const oneWeekLater = new Date(startOfToday);
-    oneWeekLater.setDate(oneWeekLater.getDate() + 7);
-    oneWeekLater.setHours(23, 59, 59, 999);
-
     return await this.prisma.appointment.findMany({
       where: {
-        doctorId: doctorId,
+        doctorId,
 
-        // entre hoy y una semana adelante (zona Bolivia)
+        // 🔹 todas las citas futuras
         scheduledStart: {
           gte: startOfToday,
-          lte: oneWeekLater,
         },
 
         ...(filters?.status && {
@@ -126,6 +120,7 @@ export class AppointmentService {
       },
     });
   }
+
 
 
   async findByDoctorAll(doctorId: string, filters?: {

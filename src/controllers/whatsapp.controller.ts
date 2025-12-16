@@ -245,7 +245,7 @@ export class WhatsAppController {
         phone,
         `✅ Especialidad: *${selected.name}*\n\n` +
         `Ahora ingresa la fecha para tu cita en formato *DD/MM/AAAA*\n\n` +
-        `Ejemplo: *15/12/2024*`
+        `Ejemplo: *05/09/2024*`
       );
       return;
     }
@@ -452,7 +452,7 @@ export class WhatsAppController {
       `✅ Horario seleccionado: *${session.selectedTime}*\n\n` +
       `Ahora necesitamos verificar tus datos.\n\n` +
       `Por favor, ingresa tu *número de carnet (CI)*:\n\n` +
-      `Ejemplo: *1234567LP*`
+      `Ejemplo: *1234567*`
     );
   }
 
