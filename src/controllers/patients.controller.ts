@@ -4,7 +4,7 @@ import { asyncHandler } from '../utils/async.handler';
 import { AppError } from '../utils/app.error';
 import { PatientService } from '../services/patient.service';
 
-const patientSchema = z.object({
+const patientBaseSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   ciNumber: z.string().optional().nullable(),
@@ -15,6 +15,29 @@ const patientSchema = z.object({
   email: z.string().email().optional().nullable(),
   insuranceInfo: z.any().optional().nullable(),
 }).strict();
+
+// Función para preprocesar el body
+const preprocessBody = (body: any) => {
+  const processed = { ...body };
+  
+  // Convertir cadenas vacías a null
+  Object.keys(processed).forEach(key => {
+    if (processed[key] === '') {
+      processed[key] = null;
+    }
+  });
+  
+  // También procesar insuranceInfo si existe
+  if (processed.insuranceInfo && typeof processed.insuranceInfo === 'object') {
+    Object.keys(processed.insuranceInfo).forEach(key => {
+      if (processed.insuranceInfo[key] === '') {
+        processed.insuranceInfo[key] = null;
+      }
+    });
+  }
+  
+  return processed;
+};
 
 type PaginationQuery = {
   page?: string | number;
@@ -44,8 +67,11 @@ export const listPatients = asyncHandler(async (req: Request, res: Response) => 
 });
 
 export const createPatient = asyncHandler(async (req: Request, res: Response) => {
-  const validation = patientSchema.safeParse(req.body);
+  const processedBody = preprocessBody(req.body);
+  const validation = patientBaseSchema.safeParse(processedBody);
+  
   if (!validation.success) {
+    console.log('Validation error:', validation.error.format());
     throw new AppError('Invalid request data', 422, 'VALIDATION_ERROR', validation.error.format());
   }
 
@@ -70,14 +96,15 @@ export const updatePatient = asyncHandler(async (req: Request, res: Response) =>
   
   if (!id) throw new AppError('Patient ID is required', 400);
 
-  const validation = patientSchema.partial().safeParse(req.body);
+  const processedBody = preprocessBody(req.body);
+  const validation = patientBaseSchema.partial().safeParse(processedBody);
   
   if (!validation.success) {
+    console.log('Validation error:', validation.error.format());
     throw new AppError('Invalid request data', 422, 'VALIDATION_ERROR', validation.error.format());
   }
 
   const service = getService(req);
-  
   const patient = await service.update(id, validation.data);
 
   res.json({ ok: true, data: patient });

@@ -99,7 +99,6 @@ export class WhatsAppController {
     const prisma = (req as any).prisma;
     if (!prisma) throw new Error('Prisma client not available');
 
-    // Limpiar sesión si recibe "cancelar" en cualquier momento
     if (message.toLowerCase() === 'cancelar') {
       userSessions.delete(phone);
       await this.sender.sendTextMessage(phone, '✅ Proceso cancelado. ¡Hasta luego!');
@@ -148,10 +147,14 @@ export class WhatsAppController {
     phone: string,
     session: UserSession
   ): Promise<void> {
-    const mensaje = `¡Hola! 👋 Soy tu asistente de agendamiento.\n\n` +
-      `Para comenzar, selecciona una opción:\n\n` +
-      `*1* - Agendar nueva cita\n\n` +
-      `*Escribe el número de tu elección.*`;
+    const mensaje = `¡Hola! 👋 Bienvenido/a a **Clínica Endovel**.\n\n` +
+      `Estoy aquí para ayudarte a gestionar` +
+      `tus citas médicas de manera rápida y sencilla.\n\n` +
+      `Para comenzar, por favor elige una de las siguientes opciones:\n\n` +
+      `*1* – Agendar una nueva cita médica\n\n` +
+      `*Escribe el número correspondiente a tu elección.*\n\n` +
+      `Si en cualquier momento deseas detener el proceso, solo escribe **"cancelar"** ` +
+      `¡Estoy aquí para asistirte! 💙`;
 
     await this.sender.sendTextMessage(phone, mensaje);
     session.step = 'especialidades';
@@ -173,23 +176,62 @@ export class WhatsAppController {
       return;
     }
 
-    // Obtener especialidades activas
     const specialties = await prisma.specialty.findMany({
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+        fees: {
+          where: {
+            feeType: 'INITIAL'
+          },
+          select: {
+            amount: true,
+            currency: true,
+            description: true
+          }
+        }
+      },
       orderBy: { name: 'asc' }
     });
 
+
     if (specialties.length === 0) {
-      await this.sender.sendTextMessage(phone, '❌ No hay especialidades disponibles en este momento.');
+      await this.sender.sendTextMessage(phone, 
+        '❌ Actualmente no hay especialidades disponibles para agendar citas.\n\n' +
+        'Por favor, intenta más tarde o contacta directamente con nuestra recepción.\n\n' +
+        '📞 Teléfono: (123) 456-7890\n' +
+        '✉️ Email: citas@endovel.com\n\n' +
+        '**Escribe "cancelar" para finalizar.**'
+      );
       userSessions.delete(phone);
       return;
     }
 
-    let mensaje = '🏥 *Selecciona una especialidad:*\n\n';
+    let mensaje = '🏥 *Especialidades Médicas Disponibles*\n\n';
+    mensaje += 'A continuación, selecciona la especialidad que necesitas consultar:\n\n';
     specialties.forEach((spec, index) => {
-      mensaje += `*${index + 1}* - ${spec.name}\n`;
+      const fee = spec.fees[0];
+      let priceInfo = '';
+      
+      if (fee) {
+        const amountNumber = fee.amount.toNumber();
+        const formattedPrice = new Intl.NumberFormat('es-BO', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        }).format(amountNumber);
+        
+        priceInfo = ` - *${formattedPrice} ${fee.currency}*`;
+      } else {
+        priceInfo = ' - *Consultar precio*';
+      }
+      
+      mensaje += `*${index + 1}* - ${spec.name}${priceInfo}\n`;
     });
-    mensaje += '\n*Escribe el número de la especialidad que deseas.*';
+
+    mensaje += '\n---\n';
+    mensaje += '*¿Cómo proceder?*\n\n';
+    mensaje += '*Escribe el número de la especialidad de tu interés.*\n';
+    mensaje += 'O escribe **"cancelar"** para detener el proceso.';
 
     // Guardar especialidades en la sesión temporalmente
     (session as any).specialties = specialties;
@@ -562,7 +604,6 @@ export class WhatsAppController {
     phone: string,
     session: UserSession
   ): Promise<void> {
-    // Obtener tarifa (por ahora valor fijo, deberías consultar de la tabla Fee)
     session.reservationAmount = 150;
     session.totalAmount = 150;
     session.remainingAmount = 0;
@@ -636,9 +677,9 @@ export class WhatsAppController {
 
       const mensajeFinal = 
         `🎉 *¡CITA AGENDADA CON ÉXITO!*\n\n` +
-        `Tu cita ha sido registrada con el código:\n` +
-        `*${cita.id.slice(0, 8).toUpperCase()}*\n\n` +
-        `Te contactaremos 24 horas antes de tu cita.\n\n` +
+        // `Tu cita ha sido registrada con el código:\n` +
+        // `*${cita.id.slice(0, 8).toUpperCase()}*\n\n` +
+        // `Te contactaremos 24 horas antes de tu cita.\n\n` +
         `¡Gracias por confiar en nosotros! 👨‍⚕️👩‍⚕️`;
 
       await this.sender.sendTextMessage(phone, mensajeFinal);
