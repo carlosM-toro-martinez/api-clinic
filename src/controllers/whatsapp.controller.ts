@@ -148,12 +148,12 @@ export class WhatsAppController {
     session: UserSession
   ): Promise<void> {
     const mensaje = `¡Hola! 👋 Bienvenido/a a **Clínica Endovel**.\n\n` +
-      `Estoy aquí para ayudarte a gestionar` +
+      `Estoy aquí para ayudarte a gestionar ` +
       `tus citas médicas de manera rápida y sencilla.\n\n` +
       `Para comenzar, por favor elige una de las siguientes opciones:\n\n` +
       `*1* – Agendar una nueva cita médica\n\n` +
       `*Escribe el número correspondiente a tu elección.*\n\n` +
-      `Si en cualquier momento deseas detener el proceso, solo escribe **"cancelar"** ` +
+      `Si en cualquier momento deseas detener el proceso, solo escribe **cancelar** ` +
       `¡Estoy aquí para asistirte! 💙`;
 
     await this.sender.sendTextMessage(phone, mensaje);
@@ -231,7 +231,7 @@ export class WhatsAppController {
     mensaje += '\n---\n';
     mensaje += '*¿Cómo proceder?*\n\n';
     mensaje += '*Escribe el número de la especialidad de tu interés.*\n';
-    mensaje += 'O escribe **"cancelar"** para detener el proceso.';
+    mensaje += 'O escribe **cancelar** para detener el proceso.';
 
     // Guardar especialidades en la sesión temporalmente
     (session as any).specialties = specialties;

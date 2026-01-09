@@ -31,6 +31,17 @@ export class CashRegisterService {
     return cashRegister;
   }
 
+  async listAll(): Promise<CashRegister[] | null> {
+    const cashRegister = await this.prisma.cashRegister.findMany({
+      include: { movements: true },
+      orderBy: { openedAt: 'desc' },
+    });
+    if (!cashRegister) {
+      throw new AppError('No hay registros de cajas', 404);
+    }
+    return cashRegister;
+  }
+
   async detail(id: string): Promise<CashRegister> {
     const cashRegister = await this.prisma.cashRegister.findUnique({ where: { id }, include: { movements: true } });
     if (!cashRegister) throw new AppError('Caja no encontrada', 404);

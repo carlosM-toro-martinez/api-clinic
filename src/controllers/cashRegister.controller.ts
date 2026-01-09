@@ -21,6 +21,12 @@ export const listCashRegisters = asyncHandler(async (req: Request, res: Response
   res.json({ ok: true, data: result });
 });
 
+export const listAllCashRegisters = asyncHandler(async (req: Request, res: Response) => {
+  const service = getService(req);
+  const result = await service.listAll();
+  res.json({ ok: true, data: result });
+});
+
 export const getCashRegister = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!id || typeof id !== 'string') throw new AppError('ID requerido', 400);
