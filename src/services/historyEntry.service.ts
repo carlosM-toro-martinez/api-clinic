@@ -252,6 +252,16 @@ export class HistoryEntryService {
     return await this.prisma.$transaction(async (tx) => {
       console.log(completeData);
       
+      // Normalizar los datos: extraer extendedFields si existen
+      if ((completeData.historyEntryData as any).extendedFields) {
+        const extendedFields = (completeData.historyEntryData as any).extendedFields;
+        completeData.historyEntryData = {
+          ...completeData.historyEntryData,
+          ...extendedFields
+        };
+        delete (completeData.historyEntryData as any).extendedFields;
+      }
+      
       let medicalHistory = await tx.medicalHistory.findUnique({
         where: {
           patientId_specialtyId: {
@@ -306,11 +316,14 @@ export class HistoryEntryService {
 
       const lastMenstrualPeriod = completeData.historyEntryData.lastMenstrualPeriod === undefined
         ? undefined
-        : (completeData.historyEntryData.lastMenstrualPeriod === null
+        : (completeData.historyEntryData.lastMenstrualPeriod === null || completeData.historyEntryData.lastMenstrualPeriod === ''
             ? null
             : (completeData.historyEntryData.lastMenstrualPeriod instanceof Date
                 ? completeData.historyEntryData.lastMenstrualPeriod
-                : new Date(completeData.historyEntryData.lastMenstrualPeriod)));
+                : (() => {
+                    const date = new Date(completeData.historyEntryData.lastMenstrualPeriod as string);
+                    return isNaN(date.getTime()) ? null : date;
+                  })()));
 
       const smokes = typeof completeData.historyEntryData.smokes === 'boolean' ? completeData.historyEntryData.smokes : undefined;
       const alcohol = typeof completeData.historyEntryData.alcohol === 'boolean' ? completeData.historyEntryData.alcohol : undefined;
@@ -480,7 +493,6 @@ export class HistoryEntryService {
 
   async getPatientMedicalHistory(patientId: string): Promise<PatientMedicalHistoryResult[]> {
     try {
-      // Primero verificar que el paciente existe
       const patientExists = await this.prisma.patient.findUnique({
         where: { id: patientId }
       });
