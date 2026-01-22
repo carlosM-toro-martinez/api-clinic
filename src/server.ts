@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import http from 'http';
 dotenv.config();
 
 import { tenantResolver } from './middleware/tenantResolver';
@@ -11,9 +12,20 @@ import routerWpp from './routes/wpp';
 import { errorHandler } from './middleware/error.handler';
 import { disconnectAllClients } from './lib/prismaManager';
 import { tenantResolverForChatbot } from './middleware/tenantResolverForChatbot';
+import { initializeSocket } from './lib/socket';
+import { setSocketIO } from './controllers/whatsapp.controller';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3000);
+
+// Crear servidor HTTP para Socket.IO
+const httpServer = http.createServer(app);
+
+// Inicializar Socket.IO
+const io = initializeSocket(httpServer);
+
+// Pasar Socket.IO al controller
+setSocketIO(io);
 
 app.use(cors());
 app.use(helmet());
@@ -39,6 +51,6 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });

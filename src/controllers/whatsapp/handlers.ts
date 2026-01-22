@@ -18,17 +18,144 @@ export async function handleInicio(
     `Estoy aquí para ayudarte a gestionar ` +
     `tus citas médicas de manera rápida y sencilla.\n\n` +
     `Para comenzar, por favor elige una de las siguientes opciones:\n\n` +
-    `*1* – Agendar una nueva cita médica\n\n` +
+    `*1* – Agendar una nueva cita médica\n` +
+    `*2* – Comunicarme con un operador\n\n` +
     `*Escribe el número correspondiente a tu elección.*\n\n` +
     `Si en cualquier momento deseas detener el proceso, solo escribe **cancelar** ` +
     `¡Estoy aquí para asistirte! 💙`;
 
   await sender.sendTextMessage(phone, mensaje);
-  session.step = 'especialidades';
+  session.step = 'menu';
 }
 
 // --------------------------------------------------------------------------
-// PASO 2: ESPECIALIDADES
+// PASO 2: MENÚ PRINCIPAL
+// --------------------------------------------------------------------------
+
+export async function handleMenu(
+  sender: WhatsAppSenderService,
+  prisma: TenantPrisma,
+  phone: string,
+  message: string,
+  session: UserSession
+): Promise<void> {
+  if (message === '1') {
+    session.step = 'especialidades';
+    await handleEspecialidades(sender, prisma, phone, '1', session);
+  } else if (message === '2') {
+    session.step = 'operador';
+    await handleOperador(sender, prisma, phone, session);
+  } else {
+    await sender.sendTextMessage(
+      phone,
+      '❌ Opción no válida. Por favor escribe *1* para agendar una cita o *2* para hablar con un operador.'
+    );
+  }
+}
+
+// --------------------------------------------------------------------------
+// PASO 2.5: OPERADOR
+// --------------------------------------------------------------------------
+
+export async function handleOperador(
+  sender: WhatsAppSenderService,
+  prisma: TenantPrisma,
+  phone: string,
+  session: UserSession
+): Promise<void> {
+  try {
+    // Verificar si el paciente existe
+    let patient = await prisma.patient.findFirst({
+      where: { phone: phone.replace('+', '') }
+    });
+
+    // Si no existe, crearlo con el teléfono como nombre/apellido/CI
+    if (!patient) {
+      patient = await prisma.patient.create({
+        data: {
+          firstName: phone,
+          lastName: phone,
+          ciNumber: phone,
+          phone: phone.replace('+', '')
+        }
+      });
+    }
+
+    session.patientId = patient.id;
+    session.isOperadorMode = true;
+
+    // Guardar el mensaje de entrada del usuario en ChatbotInteraction
+    await prisma.chatbotInteraction.create({
+      data: {
+        patientId: patient.id,
+        patientPhone: phone,
+        message: 'Usuario solicitó hablar con un operador',
+        direction: 'INBOUND',
+        intent: 'talk_to_operator',
+        resolved: false
+      }
+    });
+
+    const mensajeOperador = 
+      `📞 *Comunicación con Operador*\n\n` +
+      `Un operador se pondrá en contacto contigo pronto.\n` +
+      `Mientras tanto, puedes describir tu consulta y te ayudaremos.\n\n` +
+      `Escribe tu mensaje:`;
+
+    await sender.sendTextMessage(phone, mensajeOperador);
+  } catch (error) {
+    console.error('Error en handleOperador:', error);
+    await sender.sendTextMessage(
+      phone,
+      '❌ Error al conectar con operador. Por favor intenta más tarde.'
+    );
+    session.step = 'inicio';
+  }
+}
+
+// Manejar mensajes en modo operador
+export async function handleOperadorMessages(
+  sender: WhatsAppSenderService,
+  prisma: TenantPrisma,
+  phone: string,
+  message: string,
+  session: UserSession
+): Promise<void> {
+  try {
+    if (!session.patientId) {
+      await sender.sendTextMessage(phone, '❌ Error: no se puede identificar al paciente.');
+      return;
+    }
+
+    // Guardar el mensaje del usuario en ChatbotInteraction
+    await prisma.chatbotInteraction.create({
+      data: {
+        patientId: session.patientId,
+        patientPhone: phone,
+        message: message,
+        direction: 'INBOUND',
+        intent: 'customer_message',
+        resolved: false
+      }
+    });
+
+    // Respuesta automática
+    await sender.sendTextMessage(
+      phone,
+      '✅ Tu mensaje ha sido recibido. Un operador te responderá pronto.\n\n' +
+      'Puedes seguir escribiendo tus mensajes aquí.'
+    );
+  } catch (error) {
+    console.error('Error guardando mensaje de operador:', error);
+    await sender.sendTextMessage(
+      phone,
+      '❌ Error al guardar tu mensaje. Por favor intenta nuevamente.'
+    );
+  }
+}
+
+// --------------------------------------------------------------------------
+// PASO 3: ESPECIALIDADES
 // --------------------------------------------------------------------------
 
 export async function handleEspecialidades(
