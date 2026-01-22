@@ -8,6 +8,7 @@ const router = Router();
 router.post('/webhook', WhatsAppController.receiveMessage);
 
 // Endpoints para operadores
+router.get('/pending', WhatsAppController.getPendingChats);
 router.post('/send', WhatsAppController.sendMessageToClient);
 router.get('/chat/:patientPhone', WhatsAppController.getChatHistory);
 router.put('/resolve', WhatsAppController.markAsResolved);

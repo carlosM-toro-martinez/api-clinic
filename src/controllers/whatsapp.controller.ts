@@ -269,4 +269,85 @@ export class WhatsAppController {
       );
     }
   });
+
+  static getPendingChats = asyncHandler(async (req: Request, res: Response) => {
+    const prisma = (req as any).prisma;
+
+    if (!prisma) {
+      throw new AppError('Database client not available', 500, 'DB_NOT_AVAILABLE');
+    }
+
+    try {
+      // Obtener todos los mensajes INBOUND sin resolver, agrupados por patientPhone
+      const pendingInteractions = await prisma.chatbotInteraction.findMany({
+        where: {
+          direction: 'INBOUND',
+          resolved: false
+        },
+        include: {
+          patient: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              ciNumber: true,
+              phone: true,
+              email: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'asc'
+        }
+      });
+
+      // Agrupar por patientPhone
+      const chatsByPhone = new Map<string, typeof pendingInteractions>();
+      
+      for (const interaction of pendingInteractions) {
+        const phone = interaction.patientPhone;
+        if (!chatsByPhone.has(phone)) {
+          chatsByPhone.set(phone, []);
+        }
+        chatsByPhone.get(phone)!.push(interaction);
+      }
+
+      // Transformar a array con información agrupada
+      const pendingChats = Array.from(chatsByPhone.entries()).map(([phone, interactions]) => {
+        const lastMessage = interactions[interactions.length - 1];
+        const firstMessage = interactions[0];
+
+        return {
+          patientPhone: phone,
+          patientId: lastMessage.patientId,
+          patientInfo: lastMessage.patient,
+          messageCount: interactions.length,
+          lastMessage: {
+            text: lastMessage.message,
+            timestamp: lastMessage.createdAt,
+            intent: lastMessage.intent
+          },
+          firstMessage: {
+            text: firstMessage.message,
+            timestamp: firstMessage.createdAt
+          },
+          allMessages: interactions
+        };
+      });
+
+      res.json({
+        ok: true,
+        data: pendingChats,
+        totalChats: pendingChats.length,
+        totalPendingMessages: pendingInteractions.length
+      });
+    } catch (error) {
+      console.error('Error obteniendo chats pendientes:', error);
+      throw new AppError(
+        'Error al obtener chats pendientes. Por favor intenta nuevamente.',
+        500,
+        'GET_PENDING_CHATS_ERROR'
+      );
+    }
+  });
 }
