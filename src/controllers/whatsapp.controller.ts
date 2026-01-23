@@ -278,10 +278,8 @@ export class WhatsAppController {
     }
 
     try {
-      // Obtener todos los mensajes INBOUND sin resolver, agrupados por patientPhone
       const pendingInteractions = await prisma.chatbotInteraction.findMany({
         where: {
-          direction: 'INBOUND',
           resolved: false
         },
         include: {
@@ -300,6 +298,7 @@ export class WhatsAppController {
           createdAt: 'asc'
         }
       });
+      console.log(pendingInteractions);
 
       // Agrupar por patientPhone
       const chatsByPhone = new Map<string, typeof pendingInteractions>();
