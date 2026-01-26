@@ -139,12 +139,6 @@ export async function handleOperadorMessages(
       }
     });
 
-    // Respuesta automática
-    await sender.sendTextMessage(
-      phone,
-      '✅ Tu mensaje ha sido recibido. Un operador te responderá pronto.\n\n' +
-      'Puedes seguir escribiendo tus mensajes aquí.'
-    );
   } catch (error) {
     console.error('Error guardando mensaje de operador:', error);
     await sender.sendTextMessage(

@@ -298,7 +298,6 @@ export class WhatsAppController {
           createdAt: 'asc'
         }
       });
-      console.log(pendingInteractions);
 
       // Agrupar por patientPhone
       const chatsByPhone = new Map<string, typeof pendingInteractions>();
