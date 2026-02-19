@@ -48,16 +48,19 @@ export class PatientService {
     }
   }
 
-  async list(page: number = 1, limit: number = 20): Promise<{
+  async list(page: number = 1, limit: number = 20, includeDeleted: boolean = false): Promise<{
     items: Patient[];
     meta: { total: number; page: number; limit: number };
   }> {
     const skip = (page - 1) * limit;
     const take = Math.min(100, Math.max(1, limit));
 
+    const where = includeDeleted ? {} : { deletedAt: null };
+
     const [total, items] = await Promise.all([
-      this.prisma.patient.count(),
+      this.prisma.patient.count({ where }),
       this.prisma.patient.findMany({
+        where,
         skip,
         take,
         orderBy: { createdAt: 'desc' },
@@ -108,5 +111,14 @@ export class PatientService {
   async delete(id: string): Promise<void> {
     await this.detail(id);
     await this.prisma.patient.delete({ where: { id } });
+  }
+
+  async deactivate(id: string): Promise<Patient> {
+    await this.detail(id);
+    return await this.prisma.patient.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+      include: this.includeRelations
+    });
   }
 }

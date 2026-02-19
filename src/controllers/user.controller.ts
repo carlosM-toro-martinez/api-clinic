@@ -17,7 +17,8 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
 
 export const listUsers = asyncHandler(async (req: Request, res: Response) => {
   const service = getService(req);
-  const result = await service.list();
+  const includeInactive = String(req.query.includeInactive ?? 'false').toLowerCase() === 'true';
+  const result = await service.list(includeInactive);
   res.json({ ok: true, data: result });
 });
 
@@ -48,5 +49,13 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
   if (!id || typeof id !== 'string') throw new AppError('ID requerido', 400);
   const service = getService(req);
   const result = await service.delete(id);
+  res.json({ ok: true, data: result });
+});
+
+export const deactivateUser = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id || typeof id !== 'string') throw new AppError('ID requerido', 400);
+  const service = getService(req);
+  const result = await service.deactivate(id);
   res.json({ ok: true, data: result });
 });

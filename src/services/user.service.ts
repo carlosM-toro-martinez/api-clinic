@@ -40,15 +40,29 @@ async create(data: CreateUserData): Promise<import('../../node_modules/.prisma/t
   });
 }
 
-  async list(): Promise<import('../../node_modules/.prisma/tenant-client').User[]> {
-    return await this.prisma.user.findMany();
+  async list(includeInactive: boolean = false): Promise<import('../../node_modules/.prisma/tenant-client').User[]> {
+    const where = includeInactive
+      ? {}
+      : { isActive: true, deletedAt: null };
+
+    return await this.prisma.user.findMany({
+      where,
+      include: {
+        specialties: {
+          include: {
+            specialty: true
+          }
+        }
+      },
+    });
   }
 
   async listDoctors(): Promise<import('../../node_modules/.prisma/tenant-client').User[]> {
     return await this.prisma.user.findMany({
       where: { 
         role: 'DOCTOR',
-        isActive: true
+        isActive: true,
+        deletedAt: null
       },
       include: {
         specialties: {
@@ -109,6 +123,16 @@ async update(id: string, data: any): Promise<import('../../node_modules/.prisma/
     return await this.prisma.$transaction(async (tx) => {
       const deleted = await tx.user.delete({ where: { id } });
       return deleted;
+    });
+  }
+
+  async deactivate(id: string): Promise<import('../../node_modules/.prisma/tenant-client').User> {
+    return await this.prisma.user.update({
+      where: { id },
+      data: {
+        isActive: false,
+        deletedAt: new Date()
+      }
     });
   }
 }

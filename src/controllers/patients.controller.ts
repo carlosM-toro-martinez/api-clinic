@@ -56,8 +56,9 @@ const getPagination = (query: PaginationQuery) => ({
 
 export const listPatients = asyncHandler(async (req: Request, res: Response) => {
   const { page, limit } = getPagination(req.query);
+  const includeDeleted = String(req.query.includeDeleted ?? 'false').toLowerCase() === 'true';
   const service = getService(req);
-  const result = await service.list(page, limit);
+  const result = await service.list(page, limit, includeDeleted);
 
   res.json({ 
     ok: true, 
@@ -118,4 +119,14 @@ export const deletePatient = asyncHandler(async (req: Request, res: Response) =>
   await service.delete(id);
 
   res.json({ ok: true, message: 'Patient deleted successfully' });
+});
+
+export const deactivatePatient = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id) throw new AppError('Patient ID is required', 400);
+
+  const service = getService(req);
+  const patient = await service.deactivate(id);
+
+  res.json({ ok: true, data: patient });
 });

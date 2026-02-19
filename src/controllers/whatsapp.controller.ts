@@ -8,7 +8,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 // Importar módulos divididos
 import { WhatsAppWebhook, UserSession } from './whatsapp/types';
 import { userSessions, isSessionExpired } from './whatsapp/session.utils';
-import { handleInicio, handleMenu, handleEspecialidades, handleFecha, handleHorarios, handleVerificacion, handleRegistro, handleConfirmacion, handleOperador, handleOperadorMessages } from './whatsapp/handlers';
+import { handleInicio, handleMenu, handleEspecialidades, handleFecha, handleHorarios, handleVerificacion, handleRegistro, handleConfirmacion, handleOperador, handleOperadorMessages, handleConsultaCitas } from './whatsapp/handlers';
 
 let io: SocketIOServer | null = null;
 
@@ -105,6 +105,9 @@ export class WhatsAppController {
           break;
         case 'confirmacion':
           await handleConfirmacion(this.sender, prisma, phone, message, session);
+          break;
+        case 'consultar_citas_identificacion':
+          await handleConsultaCitas(this.sender, prisma, phone, message, session);
           break;
         case 'final':
           userSessions.delete(phone);

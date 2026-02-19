@@ -19,7 +19,8 @@ export async function handleInicio(
     `tus citas médicas de manera rápida y sencilla.\n\n` +
     `Para comenzar, por favor elige una de las siguientes opciones:\n\n` +
     `*1* – Agendar una nueva cita médica\n` +
-    `*2* – Comunicarme con un operador\n\n` +
+    `*2* – Comunicarme con un operador\n` +
+    `*3* – Consultar mis citas y pagos\n\n` +
     `*Escribe el número correspondiente a tu elección.*\n\n` +
     `Si en cualquier momento deseas detener el proceso, solo escribe **cancelar** ` +
     `¡Estoy aquí para asistirte! 💙`;
@@ -45,10 +46,20 @@ export async function handleMenu(
   } else if (message === '2') {
     session.step = 'operador';
     await handleOperador(sender, prisma, phone, session);
+  } else if (message === '3') {
+    session.step = 'consultar_citas_identificacion';
+    await sender.sendTextMessage(
+      phone,
+      '📋 *Consulta de citas y pagos*\n\n' +
+      'Por favor, escribe tu *CI* o tu *nombre completo* para verificar tus citas.\n\n' +
+      'Ejemplos:\n' +
+      '• *1234567*\n' +
+      '• *Juan Pérez García*'
+    );
   } else {
     await sender.sendTextMessage(
       phone,
-      '❌ Opción no válida. Por favor escribe *1* para agendar una cita o *2* para hablar con un operador.'
+      '❌ Opción no válida. Por favor escribe *1* para agendar una cita, *2* para hablar con un operador o *3* para consultar tus citas.'
     );
   }
 }
@@ -146,6 +157,172 @@ export async function handleOperadorMessages(
       '❌ Error al guardar tu mensaje. Por favor intenta nuevamente.'
     );
   }
+}
+
+// --------------------------------------------------------------------------
+// PASO 2.6: CONSULTA DE CITAS Y PAGOS
+// --------------------------------------------------------------------------
+
+function normalizarTexto(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function esCI(texto: string): boolean {
+  return /^[0-9]{4,12}$/.test(texto.trim());
+}
+
+function formatMoney(value: any): string {
+  const num = toNumber(value);
+  if (Number.isNaN(num)) return '0.00';
+  return new Intl.NumberFormat('es-BO', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(num);
+}
+
+function toNumber(value: any): number {
+  if (typeof value?.toNumber === 'function') return value.toNumber();
+  const num = Number(value ?? 0);
+  return Number.isNaN(num) ? 0 : num;
+}
+
+export async function handleConsultaCitas(
+  sender: WhatsAppSenderService,
+  prisma: TenantPrisma,
+  phone: string,
+  message: string,
+  session: UserSession
+): Promise<void> {
+  const input = normalizarTexto(message);
+
+  let patient = null;
+
+  if (esCI(input)) {
+    patient = await prisma.patient.findFirst({
+      where: { ciNumber: input }
+    });
+  } else {
+    const parts = input.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      const firstName = parts[0];
+      const lastName = parts.slice(1).join(' ');
+
+      const matches = await prisma.patient.findMany({
+        where: {
+          AND: [
+            { firstName: { contains: firstName, mode: 'insensitive' } },
+            { lastName: { contains: lastName, mode: 'insensitive' } }
+          ]
+        },
+        take: 2
+      });
+
+      if (matches.length > 1) {
+        await sender.sendTextMessage(
+          phone,
+          '⚠️ Encontramos varios pacientes con ese nombre.\n\n' +
+          'Por favor, responde con tu *CI* para continuar.'
+        );
+        return;
+      }
+
+      patient = matches[0] ?? null;
+    } else {
+      const matches = await prisma.patient.findMany({
+        where: {
+          OR: [
+            { firstName: { contains: input, mode: 'insensitive' } },
+            { lastName: { contains: input, mode: 'insensitive' } }
+          ]
+        },
+        take: 2
+      });
+
+      if (matches.length > 1) {
+        await sender.sendTextMessage(
+          phone,
+          '⚠️ Encontramos varios pacientes con ese nombre.\n\n' +
+          'Por favor, responde con tu *CI* para continuar.'
+        );
+        return;
+      }
+
+      patient = matches[0] ?? null;
+    }
+  }
+
+  if (!patient) {
+    await sender.sendTextMessage(
+      phone,
+      '❌ No encontramos un paciente con esos datos.\n\n' +
+      'Por favor intenta nuevamente con tu *CI* o *nombre completo*.'
+    );
+    return;
+  }
+
+  session.patientId = patient.id;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const appointments = await prisma.appointment.findMany({
+    where: {
+      patientId: patient.id,
+      scheduledStart: { gte: today },
+      status: { in: ['PENDING', 'CONFIRMED'] }
+    },
+    include: {
+      doctor: { select: { firstName: true, lastName: true } },
+      specialty: { select: { name: true } }
+    },
+    orderBy: { scheduledStart: 'asc' }
+  });
+
+  if (appointments.length === 0) {
+    await sender.sendTextMessage(
+      phone,
+      '✅ No encontramos citas próximas registradas a tu nombre.\n\n' +
+      'Si necesitas agendar una nueva cita, escribe *1* en el menú principal.'
+    );
+    session.step = 'menu';
+    return;
+  }
+
+  let mensaje = '📆 *Tus citas próximas*\n\n';
+
+  appointments.forEach((appt, index) => {
+    const fecha = appt.scheduledStart.toLocaleDateString('es-BO');
+    const hora = appt.scheduledStart.toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' });
+    const doctor = `Dr(a). ${appt.doctor.firstName} ${appt.doctor.lastName}`;
+    const especialidad = appt.specialty.name;
+
+    const adelanto = toNumber(appt.reservationAmount);
+    const total = toNumber(appt.totalAmount);
+    const saldo = toNumber(appt.remainingAmount);
+
+    mensaje += `*${index + 1}* ${especialidad}\n`;
+    mensaje += `• Fecha: ${fecha} ${hora}\n`;
+    mensaje += `• Médico: ${doctor}\n`;
+    mensaje += `• Adelanto: ${formatMoney(adelanto)} BOB\n`;
+    mensaje += `• Total: ${formatMoney(total)} BOB\n`;
+    if (saldo > 0) {
+      mensaje += `• Saldo pendiente: ${formatMoney(saldo)} BOB\n`;
+      mensaje += `• Estado: *Pendiente de pago*\n`;
+      mensaje += `• Nota: Para terminar de cancelar la reserva, puedes pagar el saldo pendiente en recepción.\n\n`;
+    } else {
+      mensaje += `• Saldo pendiente: 0.00 BOB\n`;
+      mensaje += `• Estado: *Sin saldo pendiente*\n\n`;
+    }
+  });
+
+  mensaje += 'Si deseas cancelar o reprogramar, por favor contacta a recepción.\n\n';
+  mensaje += 'Para volver al menú, escribe *1*, *2* o *3*.';
+
+  await sender.sendTextMessage(phone, mensaje);
+  session.step = 'menu';
 }
 
 // --------------------------------------------------------------------------

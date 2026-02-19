@@ -16,7 +16,7 @@ export interface WhatsAppWebhook {
 
 export interface UserSession {
   phone: string;
-  step: 'inicio' | 'menu' | 'operador' | 'especialidades' | 'fecha' | 'horarios' | 'verificacion' | 'registro' | 'confirmacion' | 'final';
+  step: 'inicio' | 'menu' | 'operador' | 'especialidades' | 'fecha' | 'horarios' | 'verificacion' | 'registro' | 'confirmacion' | 'consultar_citas_identificacion' | 'final';
   selectedSpecialtyId?: string;
   selectedSpecialtyName?: string;
   appointmentDate?: string;
