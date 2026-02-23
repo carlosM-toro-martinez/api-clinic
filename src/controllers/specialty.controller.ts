@@ -68,3 +68,57 @@ export const addSpecialtySchedules = asyncHandler(async (req: Request, res: Resp
   const result = await service.addSchedules(specialtyId, schedules);
   res.status(201).json({ ok: true, data: result });
 });
+
+export const updateSpecialtyFee = asyncHandler(async (req: Request, res: Response) => {
+  const { specialtyId, feeId } = req.params;
+  if (!specialtyId || typeof specialtyId !== 'string') throw new AppError('specialtyId requerido', 400);
+  if (!feeId || typeof feeId !== 'string') throw new AppError('feeId requerido', 400);
+  const service = getService(req);
+
+  const result = await service.updateFee(specialtyId, feeId, req.body);
+  res.json({ ok: true, data: result });
+});
+
+export const deleteSpecialtyFee = asyncHandler(async (req: Request, res: Response) => {
+  const { specialtyId, feeId } = req.params;
+  if (!specialtyId || typeof specialtyId !== 'string') throw new AppError('specialtyId requerido', 400);
+  if (!feeId || typeof feeId !== 'string') throw new AppError('feeId requerido', 400);
+  const service = getService(req);
+
+  const result = await service.deleteFee(specialtyId, feeId);
+  res.json({ ok: true, data: result });
+});
+
+export const updateSpecialtySchedule = asyncHandler(async (req: Request, res: Response) => {
+  const { specialtyId, scheduleId } = req.params;
+  if (!specialtyId || typeof specialtyId !== 'string') throw new AppError('specialtyId requerido', 400);
+  if (!scheduleId || typeof scheduleId !== 'string') throw new AppError('scheduleId requerido', 400);
+  const service = getService(req);
+
+  const result = await service.updateSchedule(specialtyId, scheduleId, req.body);
+  res.json({ ok: true, data: result });
+});
+
+export const deleteSpecialtySchedule = asyncHandler(async (req: Request, res: Response) => {
+  const { specialtyId, scheduleId } = req.params;
+  if (!specialtyId || typeof specialtyId !== 'string') throw new AppError('specialtyId requerido', 400);
+  if (!scheduleId || typeof scheduleId !== 'string') throw new AppError('scheduleId requerido', 400);
+  const service = getService(req);
+
+  const result = await service.deleteSchedule(specialtyId, scheduleId);
+  res.json({ ok: true, data: result });
+});
+
+export const deleteSpecialtySchedulesBulk = asyncHandler(async (req: Request, res: Response) => {
+  const { specialtyId } = req.params;
+  if (!specialtyId || typeof specialtyId !== 'string') throw new AppError('specialtyId requerido', 400);
+  const service = getService(req);
+
+  const scheduleIds = req.body;
+  if (!Array.isArray(scheduleIds) || scheduleIds.length === 0) {
+    throw new AppError('Se requiere un arreglo de scheduleIds', 400);
+  }
+
+  const result = await service.deleteSchedulesBulk(specialtyId, scheduleIds);
+  res.json({ ok: true, data: result });
+});
