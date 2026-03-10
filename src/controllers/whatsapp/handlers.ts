@@ -393,7 +393,14 @@ export async function handleEspecialidades(
   mensaje += '*Escribe el número de la especialidad de tu interés.*\n';
   mensaje += 'O escribe **cancelar** para detener el proceso.';
 
-  (session as any).specialties = specialties;
+  const specialtiesForSession = specialties.map((spec) => ({
+    id: spec.id,
+    name: spec.name,
+    feeAmount: spec.fees[0]?.amount?.toNumber() ?? 0,
+    feeCurrency: spec.fees[0]?.currency ?? 'BOB',
+  }));
+
+  (session as any).specialties = specialtiesForSession;
   session.step = 'fecha';
   await sender.sendTextMessage(phone, mensaje);
 }
@@ -488,7 +495,7 @@ export async function handleFecha(
   session: UserSession
 ): Promise<void> {
   if (!session.selectedSpecialtyId || !session.selectedSpecialtyName) {
-    const specialties: Array<{ id: string; name: string }> | undefined = (session as any).specialties;
+    const specialties: Array<{ id: string; name: string; feeAmount: number; feeCurrency: string }> | undefined = (session as any).specialties;
     
     if (!specialties || !Array.isArray(specialties)) {
       await sender.sendTextMessage(phone, '❌ Error: No se encontraron especialidades. Por favor, comienza de nuevo.');
@@ -516,6 +523,9 @@ export async function handleFecha(
 
     session.selectedSpecialtyId = selected.id;
     session.selectedSpecialtyName = selected.name;
+    session.reservationAmount = selected.feeAmount;
+    session.totalAmount = selected.feeAmount;
+    session.remainingAmount = 0;
     delete (session as any).specialties;
     
     await sender.sendTextMessage(
@@ -745,10 +755,12 @@ async function mostrarResumen(
   phone: string,
   session: UserSession
 ): Promise<void> {
-  session.reservationAmount = 150;
-  session.totalAmount = 150;
-  session.remainingAmount = 0;
+  // Si el monto ya fue seteado en la selección de especialidad, mantenerlo.
+  session.reservationAmount = session.reservationAmount ?? 0;
+  session.totalAmount = session.totalAmount ?? session.reservationAmount ?? 0;
+  session.remainingAmount = session.remainingAmount ?? 0;
 
+  const amountToPay = session.reservationAmount ?? 0;
   const resumen = 
     `📋 *RESUMEN DE LA CITA*\n\n` +
     `• *Especialidad:* ${session.selectedSpecialtyName}\n` +
@@ -757,7 +769,7 @@ async function mostrarResumen(
     `• *Doctor:* ${session.selectedDoctorName}\n` +
     `• *Paciente:* ${session.patientFirstName} ${session.patientLastName}\n` +
     `• *CI:* ${session.patientCI}\n` +
-    `• *Monto a pagar:* ${session.reservationAmount} BOB\n\n` +
+    `• *Monto a pagar:* ${amountToPay} BOB\n\n` +
     `¿Confirmas la reserva de esta cita?\n\n` +
     `Responde *SI* para confirmar o *NO* para cancelar.`;
 

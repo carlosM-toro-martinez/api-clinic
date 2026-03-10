@@ -34,6 +34,23 @@ export interface UserSession {
   reservationAmount?: number;
   totalAmount?: number;
   remainingAmount?: number;
+
+  specialties?: Array<{
+    id: string;
+    name: string;
+    feeAmount: number;
+    feeCurrency: string;
+  }>;
+
+  horarios?: Array<{
+    id: string;
+    doctorId: string;
+    doctorName: string;
+    start: string;
+    end: string;
+  }>;
+  totalAmount?: number;
+  remainingAmount?: number;
   isOperadorMode?: boolean;
   lastInteraction: Date;
 }
