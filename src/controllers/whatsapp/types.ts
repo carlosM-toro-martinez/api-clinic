@@ -49,8 +49,6 @@ export interface UserSession {
     start: string;
     end: string;
   }>;
-  totalAmount?: number;
-  remainingAmount?: number;
   isOperadorMode?: boolean;
   lastInteraction: Date;
 }
