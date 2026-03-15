@@ -523,9 +523,10 @@ export async function handleFecha(
 
     session.selectedSpecialtyId = selected.id;
     session.selectedSpecialtyName = selected.name;
-    session.reservationAmount = selected.feeAmount;
+    // El monto de consulta es el total. No se cobra adelanto en este paso.
     session.totalAmount = selected.feeAmount;
-    session.remainingAmount = 0;
+    session.reservationAmount = 0;
+    session.remainingAmount = selected.feeAmount;
     delete (session as any).specialties;
     
     await sender.sendTextMessage(
@@ -760,7 +761,7 @@ async function mostrarResumen(
   session.totalAmount = session.totalAmount ?? session.reservationAmount ?? 0;
   session.remainingAmount = session.remainingAmount ?? 0;
 
-  const amountToPay = session.reservationAmount ?? 0;
+  const amountToPay = session.totalAmount ?? session.reservationAmount ?? 0;
   const resumen = 
     `📋 *RESUMEN DE LA CITA*\n\n` +
     `• *Especialidad:* ${session.selectedSpecialtyName}\n` +
@@ -769,7 +770,7 @@ async function mostrarResumen(
     `• *Doctor:* ${session.selectedDoctorName}\n` +
     `• *Paciente:* ${session.patientFirstName} ${session.patientLastName}\n` +
     `• *CI:* ${session.patientCI}\n` +
-    `• *Monto a pagar:* ${amountToPay} BOB\n\n` +
+    `• *Monto a pagar:* ${formatMoney(amountToPay)} BOB\n\n` +
     `¿Confirmas la reserva de esta cita?\n\n` +
     `Responde *SI* para confirmar o *NO* para cancelar.`;
 
