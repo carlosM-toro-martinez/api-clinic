@@ -260,6 +260,37 @@ export class AppointmentService {
     });
   }
 
+  async cancel(id: string, reason?: string): Promise<Appointment> {
+    return await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.appointment.findUnique({ where: { id } });
+      if (!existing) throw new AppError('Cita no encontrada', 404);
+
+      if (existing.status === 'CANCELLED') {
+        throw new AppError('La cita ya está cancelada', 400, 'APPOINTMENT_ALREADY_CANCELLED');
+      }
+
+      if (existing.status === 'COMPLETED') {
+        throw new AppError('No se puede cancelar una cita completada', 400, 'APPOINTMENT_ALREADY_COMPLETED');
+      }
+
+      let notes = existing.notes;
+      if (reason && reason.trim()) {
+        const cancellationNote = `Cancelada: ${reason.trim()}`;
+        notes = notes ? `${notes}\n${cancellationNote}` : cancellationNote;
+      }
+
+      const cancelled = await tx.appointment.update({
+        where: { id },
+        data: {
+          status: 'CANCELLED',
+          notes,
+        },
+      });
+
+      return cancelled;
+    });
+  }
+
   async delete(id: string): Promise<Appointment> {
     return await this.prisma.$transaction(async (tx) => {
       const deleted = await tx.appointment.delete({ where: { id } });

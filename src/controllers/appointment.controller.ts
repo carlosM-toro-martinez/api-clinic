@@ -68,6 +68,15 @@ export const updateAppointment = asyncHandler(async (req: Request, res: Response
   res.json({ ok: true, data: result });
 });
 
+export const cancelAppointment = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id || typeof id !== 'string') throw new AppError('ID requerido', 400);
+  const service = getService(req);
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
+  const result = await service.cancel(id, reason);
+  res.json({ ok: true, data: result });
+});
+
 export const deleteAppointment = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!id || typeof id !== 'string') throw new AppError('ID requerido', 400);
