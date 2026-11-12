@@ -77,7 +77,7 @@ export async function handleOperador(
   try {
     // Verificar si el paciente existe
     let patient = await prisma.patient.findFirst({
-      where: { phone: phone.replace('+', '') }
+      where: { phone: phone.replace('+', ''), deletedAt: null }
     });
 
     // Si no existe, crearlo con el teléfono como nombre/apellido/CI
@@ -212,6 +212,7 @@ export async function handleConsultaCitas(
 
       const matches = await prisma.patient.findMany({
         where: {
+          deletedAt: null,
           AND: [
             { firstName: { contains: firstName, mode: 'insensitive' } },
             { lastName: { contains: lastName, mode: 'insensitive' } }
@@ -233,6 +234,7 @@ export async function handleConsultaCitas(
     } else {
       const matches = await prisma.patient.findMany({
         where: {
+          deletedAt: null,
           OR: [
             { firstName: { contains: input, mode: 'insensitive' } },
             { lastName: { contains: input, mode: 'insensitive' } }

@@ -110,7 +110,17 @@ export class PatientService {
 
   async delete(id: string): Promise<void> {
     await this.detail(id);
-    await this.prisma.patient.delete({ where: { id } });
+    try {
+      await this.prisma.patient.delete({ where: { id } });
+    } catch (error: any) {
+      if (error.code === 'P2003') {
+        throw new AppError(
+          'Patient has related records (appointments, histories, etc.) and cannot be deleted. Deactivate it instead.',
+          409,
+        );
+      }
+      throw new AppError('Failed to delete patient', 500);
+    }
   }
 
   async deactivate(id: string): Promise<Patient> {
