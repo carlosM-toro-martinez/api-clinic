@@ -84,7 +84,7 @@ export const getPatientRecentHistoryEntries = asyncHandler(async (req: Request, 
   const service = getService(req);
   const result = await service.getPatientRecentHistoryEntries(
     patientId, 
-    limit ? parseInt(limit as string) : 10
+    Number.isFinite(parseInt(limit as string)) && parseInt(limit as string) > 0 ? Math.min(parseInt(limit as string), 100) : 10
   );
   
   res.json({ 

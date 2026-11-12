@@ -26,6 +26,10 @@ export class AppointmentService {
         ...appointmentData
       } = data;
 
+      if (amount !== undefined && amount !== null && (!Number.isFinite(Number(amount)) || Number(amount) < 0)) {
+        throw new AppError('El monto debe ser un número mayor o igual a 0', 400);
+      }
+
       if (appointmentData.scheduledStart && typeof appointmentData.scheduledStart === 'string') {
         appointmentData.scheduledStart = new Date(appointmentData.scheduledStart);
       }
@@ -34,7 +38,7 @@ export class AppointmentService {
         data: appointmentData as Prisma.AppointmentCreateInput
       });
 
-      if (cashRegisterId && amount !== undefined && type && userId) {
+      if (cashRegisterId && amount !== undefined && Number(amount) > 0 && type && userId) {
         const cashRegister = await tx.cashRegister.findUnique({
           where: { id: cashRegisterId },
         });
@@ -223,7 +227,7 @@ export class AppointmentService {
 
       const updated = await tx.appointment.update({ where: { id }, data: appointmentData as Prisma.AppointmentUpdateInput });
 
-      if (cashRegisterId && amount !== undefined && type && userId) {
+      if (cashRegisterId && amount !== undefined && Number(amount) > 0 && type && userId) {
         const cashRegister = await tx.cashRegister.findUnique({ where: { id: cashRegisterId } });
 
         if (!cashRegister) {

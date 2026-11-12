@@ -178,6 +178,7 @@ export class ReportService {
       FROM "CashMovement"
       WHERE "CashMovement"."cashRegisterId" = $1
         AND "CashMovement"."createdAt" BETWEEN $2 AND $3
+        AND "CashMovement"."description" NOT LIKE 'CIERRE DE CAJA%'
       GROUP BY "period"
       ORDER BY "period";
     `;

@@ -8,7 +8,7 @@ const patientBaseSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   ciNumber: z.string().optional().nullable(),
-  birthDate: z.string().optional().nullable(),
+  birthDate: z.string().optional().nullable().refine((v) => !v || !Number.isNaN(new Date(v).getTime()), { message: 'birthDate inválida' }),
   gender: z.string().optional().nullable(),
   address: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
@@ -49,9 +49,14 @@ const getService = (req: Request): PatientService => {
   return new PatientService(req.prisma);
 };
 
+const toInt = (value: unknown, fallback: number): number => {
+  const n = Math.trunc(Number(value));
+  return Number.isFinite(n) ? n : fallback;
+};
+
 const getPagination = (query: PaginationQuery) => ({
-  page: Math.max(1, Number(query.page ?? 1)),
-  limit: Math.max(1, Math.min(100, Number(query.limit ?? 20))),
+  page: Math.max(1, toInt(query.page ?? 1, 1)),
+  limit: Math.max(1, Math.min(100, toInt(query.limit ?? 20, 20))),
 });
 
 export const listPatients = asyncHandler(async (req: Request, res: Response) => {

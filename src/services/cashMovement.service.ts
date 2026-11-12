@@ -9,7 +9,20 @@ export class CashMovementService {
   }
 
   async create(data: Prisma.CashMovementCreateInput): Promise<CashMovement> {
+    const input = data as unknown as { cashRegisterId?: string; type?: string; amount?: number | string };
+    if (input.type !== 'INCOME' && input.type !== 'EXPENSE') {
+      throw new AppError('type debe ser INCOME o EXPENSE', 400);
+    }
+    const amountNum = Number(input.amount);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      throw new AppError('El monto debe ser un número mayor a 0', 400);
+    }
+    if (!input.cashRegisterId) throw new AppError('cashRegisterId requerido', 400);
+
     return await this.prisma.$transaction(async (tx) => {
+      const register = await tx.cashRegister.findUnique({ where: { id: input.cashRegisterId } });
+      if (!register) throw new AppError('Caja no encontrada', 404);
+      if (register.status !== 'OPEN') throw new AppError('La caja está cerrada', 400);
       const movement = await tx.cashMovement.create({ data });
       await tx.cashRegister.update({
         where: { id: (data as any).cashRegisterId },

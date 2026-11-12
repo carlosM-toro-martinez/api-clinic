@@ -10,6 +10,12 @@ export class CashRegisterService {
   }
 
   async create(data: Prisma.CashRegisterCreateInput): Promise<CashRegister> {
+    const input = data as unknown as { userId?: string; openingAmount?: number | string };
+    const opening = Number(input.openingAmount);
+    if (input.openingAmount === undefined || input.openingAmount === '' || !Number.isFinite(opening) || opening < 0) {
+      throw new AppError('openingAmount debe ser un número mayor o igual a 0', 400);
+    }
+    if (!input.userId) throw new AppError('userId requerido', 400);
     return await this.prisma.$transaction(async (tx) => {
       const cashRegister = await tx.cashRegister.create({ data });
       return cashRegister;

@@ -249,8 +249,10 @@ export class HistoryEntryService {
   }
 
   async create(completeData: CreateMedicalHistoryData): Promise<CreateMedicalHistoryResult> {
+    if (!completeData?.medicalHistoryData || !completeData?.historyEntryData) {
+      throw new AppError('medicalHistoryData e historyEntryData son requeridos', 400);
+    }
     return await this.prisma.$transaction(async (tx) => {
-      console.log(completeData);
       
       // Normalizar los datos: extraer extendedFields si existen
       if ((completeData.historyEntryData as any).extendedFields) {
@@ -276,16 +278,16 @@ export class HistoryEntryService {
           where: { id: completeData.appointmentId }
         });
         if (!appointmentExists) {
-          throw new Error(`Appointment with ID ${completeData.appointmentId} does not exist`);
+          throw new AppError(`Appointment with ID ${completeData.appointmentId} does not exist`, 404);
         }
 
         // Verificar que la cita pertenece al mismo paciente y doctor
         if (appointmentExists.patientId !== completeData.medicalHistoryData.patientId) {
-          throw new Error(`Appointment does not belong to the specified patient`);
+          throw new AppError('Appointment does not belong to the specified patient', 400);
         }
 
         if (appointmentExists.doctorId !== completeData.historyEntryData.doctorId) {
-          throw new Error(`Appointment does not belong to the specified doctor`);
+          throw new AppError('Appointment does not belong to the specified doctor', 400);
         }
 
         // Actualizar el estado de la cita a COMPLETED
@@ -386,7 +388,7 @@ export class HistoryEntryService {
               diagnosisIdToUse = diagnosis.diagnosisId;
             } else {
               // Si el UUID no existe en la base de datos, lanzar error
-              throw new Error(`Diagnóstico con ID ${diagnosis.diagnosisId} no encontrado`);
+              throw new AppError(`Diagnóstico con ID ${diagnosis.diagnosisId} no encontrado`, 404);
             }
           } else {
             // Si NO es un UUID válido, crear un nuevo diagnóstico
@@ -498,7 +500,7 @@ export class HistoryEntryService {
       });
 
       if (!patientExists) {
-        throw new Error(`Patient with ID ${patientId} does not exist`);
+        throw new AppError(`Patient with ID ${patientId} does not exist`, 404);
       }
 
       // Obtener todos los historiales médicos del paciente con toda la información relacionada
@@ -588,6 +590,7 @@ export class HistoryEntryService {
 
       return medicalHistories as unknown as PatientMedicalHistoryResult[];
     } catch (error) {
+      if (error instanceof AppError) throw error;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       console.error('Error retrieving patient medical history:', error);
       throw new Error(`Failed to retrieve patient medical history: ${errorMessage}`);
